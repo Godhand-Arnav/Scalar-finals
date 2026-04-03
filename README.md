@@ -36,17 +36,28 @@ FORGE dynamically routes across three distinct procedurally generated misinforma
 
 **1. Setup the Environment**
 ```bash
+# Clone the repository
+git clone https://github.com/Harshal1841A/Forge-RL.git
+cd Forge-RL
+
+# Set up environment variables
+cp .env.example .env
+
+# Install dependencies
 pip install -r requirements.txt
-export OPENAI_API_KEY="sk-..."    # Standard API Key or proxy
-export HF_TOKEN="hf_..."          # Fallback / open-weights
-export API_BASE_URL="https://..." # Proxy LLM router if applicable
 ```
 
 **2. Baseline Evaluation**
 The inference script iteratively spawns the ReAct++ local LLMAgent against 2 episodes of every primary task to compute the reproducible leaderboard stats.
 ```bash
-python inference.py
+python scripts/inference.py
 ```
+
+**3. Launch the OpenEnv API Server & Visualizer**
+```bash
+docker-compose up --build
+```
+Open `frontend/visualizer.html` in your browser to watch the RL agents graphically!
 
 ## 📊 Baseline Scores (LLM Hybrid — Groq Free-Tier)
 
