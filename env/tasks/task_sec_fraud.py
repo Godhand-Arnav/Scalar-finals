@@ -1,0 +1,210 @@
+"""
+Task: SECFraudTask — Financial Forensics / SEC Filing Mismatch (v2.0)
+
+Simulates a corporate misinformation scenario where a CEO's public statement
+contradicts the company's official SEC EDGAR filing. The agent must use
+query_source and cross_reference to detect the discrepancy between the public
+claim and the regulatory filing, then submit "fabricated".
+
+This task tests the agent's ability to reason across financial-domain evidence
+without requiring any financial domain-specific tools — the existing investigative
+tool set is sufficient.
+"""
+
+from __future__ import annotations
+
+import random
+import uuid
+from datetime import datetime, timedelta
+
+from env.claim_graph import ClaimGraph, ClaimNode, EvidenceEdge
+from env.tasks.task_base import BaseTask
+
+
+_SEC_SCENARIOS = [
+    {
+        "company": "NovaTech Inc.",
+        "ticker": "NVTK",
+        "ceo_statement": "NovaTech has zero long-term debt and is fully self-funded through operations.",
+        "sec_reality": "10-K filing shows $2.3B in senior unsecured notes due 2026 (Item 8, Note 12).",
+        "filing_type": "10-K",
+        "mismatch_severity": "critical",
+    },
+    {
+        "company": "GreenSphere Energy",
+        "ticker": "GSPH",
+        "ceo_statement": "Our revenue grew 40% year-over-year to $850M in fiscal 2024.",
+        "sec_reality": "8-K earnings release shows $612M revenue, representing 11% growth YoY.",
+        "filing_type": "8-K",
+        "mismatch_severity": "critical",
+    },
+    {
+        "company": "BioPharma Dynamics",
+        "ticker": "BPHD",
+        "ceo_statement": "Phase III trial for BPD-7 showed 95% efficacy with no serious adverse events.",
+        "sec_reality": "FDA 483 observation letter and SEC 8-K disclose 18% SAE rate; trial on partial clinical hold.",
+        "filing_type": "8-K",
+        "mismatch_severity": "critical",
+    },
+    {
+        "company": "CryptoVault Holdings",
+        "ticker": "CVH",
+        "ceo_statement": "Our reserves exceed customer deposits by 3:1. No liquidity risk whatsoever.",
+        "sec_reality": "Amended 10-Q shows reserve ratio of 0.6:1; auditor issued going-concern qualification.",
+        "filing_type": "10-Q",
+        "mismatch_severity": "critical",
+    },
+    {
+        "company": "AeroLink Systems",
+        "ticker": "ALSY",
+        "ceo_statement": "We received no regulatory penalties in the past fiscal year.",
+        "sec_reality": "10-K discloses $47M FTC settlement and ongoing DOJ antitrust investigation (Note 14).",
+        "filing_type": "10-K",
+        "mismatch_severity": "moderate",
+    },
+]
+
+_FINANCIAL_MEDIA_DOMAINS = [
+    "marketwatch.com", "bloomberg.com", "wsj.com",
+    "ft.com", "reuters.com", "cnbc.com",
+]
+
+_REGULATOR_DOMAINS = [
+    "sec.gov", "ftc.gov", "doj.gov", "finra.org",
+]
+
+
+class SECFraudTask(BaseTask):
+    """
+    Financial forensics task: detect mismatch between CEO's public statement
+    and official SEC EDGAR regulatory filing.
+
+    The true label is always "fabricated" — the CEO statement constitutes
+    deliberate material misrepresentation (securities fraud).
+    """
+
+    task_id = "sec_fraud"
+    description = (
+        "Agent investigates a CEO's public statement and must cross-reference it "
+        "against official SEC EDGAR filings to uncover material misrepresentation."
+    )
+
+    def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
+        rng = random.Random(seed)
+        scenario = rng.choice(_SEC_SCENARIOS)
+
+        graph_id = str(uuid.uuid4())
+        root_id  = "node_root"
+
+        # ── Root node: CEO's public statement (the false claim) ───────────────
+        pub_domain = f"ir.{scenario['company'].lower().replace(' ', '').replace('.', '')}.com"
+        root = ClaimNode(
+            node_id=root_id,
+            text=(
+                f"[CEO STATEMENT — {scenario['company']} ({scenario['ticker']})] "
+                f"{scenario['ceo_statement']}"
+            ),
+            source_url=f"https://{pub_domain}/press-releases/{seed}",
+            domain=pub_domain,
+            timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 30)),
+            author=f"CEO of {scenario['company']}",
+            virality_score=rng.uniform(0.5, 0.85),
+            trust_score=0.6,   # Corporate IR sites are semi-trusted
+            metadata={
+                "company":        scenario["company"],
+                "ticker":         scenario["ticker"],
+                "filing_type":    scenario["filing_type"],
+                "mismatch":       scenario["mismatch_severity"],
+                "forensics_domain": "financial",
+            },
+        )
+
+        graph = ClaimGraph(
+            graph_id=graph_id,
+            root_claim_id=root_id,
+            true_label="fabricated",
+            difficulty=difficulty,
+            applied_tactics=["fabricate_statistic", "misattribute_quote"],
+        )
+        graph.add_node(root)
+
+        # ── SEC EDGAR filing node (the ground truth contradicting claim) ───────
+        sec_id = "node_sec_filing"
+        sec = ClaimNode(
+            node_id=sec_id,
+            text=(
+                f"[SEC EDGAR {scenario['filing_type']} — {scenario['company']}] "
+                f"{scenario['sec_reality']}"
+            ),
+            source_url=(
+                f"https://www.sec.gov/cgi-bin/browse-edgar"
+                f"?action=getcompany&CIK={scenario['ticker']}&type={scenario['filing_type']}"
+            ),
+            domain="sec.gov",
+            timestamp=datetime.utcnow() - timedelta(days=rng.randint(30, 90)),
+            virality_score=0.05,
+            trust_score=0.99,   # SEC filings are authoritative
+            metadata={"filing_type": scenario["filing_type"]},
+        )
+        graph.add_node(sec)
+        graph.add_edge(EvidenceEdge(
+            edge_id="e_sec", src_id=sec_id, tgt_id=root_id,
+            relation="contradicts", weight=0.99,
+        ))
+
+        # ── Financial media coverage node ─────────────────────────────────────
+        media_domain = rng.choice(_FINANCIAL_MEDIA_DOMAINS)
+        media_id = "node_media"
+        media = ClaimNode(
+            node_id=media_id,
+            text=(
+                f"Analysis: {scenario['company']} CEO statements raise red flags. "
+                f"Analysts note discrepancy between press release and {scenario['filing_type']} filing."
+            ),
+            source_url=f"https://{media_domain}/article/{scenario['ticker']}/analysis-{seed}",
+            domain=media_domain,
+            timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 7)),
+            virality_score=rng.uniform(0.4, 0.75),
+            trust_score=0.80,
+        )
+        graph.add_node(media)
+        graph.add_edge(EvidenceEdge(
+            edge_id="e_media", src_id=media_id, tgt_id=root_id,
+            relation="contradicts", weight=0.75,
+        ))
+
+        # ── Difficulty: add regulatory investigation node ─────────────────────
+        if difficulty >= 2:
+            reg_domain = rng.choice(_REGULATOR_DOMAINS)
+            reg_id = "node_regulator"
+            reg = ClaimNode(
+                node_id=reg_id,
+                text=(
+                    f"Regulatory filing: {reg_domain.split('.')[0].upper()} opened preliminary "
+                    f"inquiry into {scenario['company']}'s disclosures."
+                ),
+                source_url=f"https://{reg_domain}/news/{scenario['ticker']}-inquiry-{seed}",
+                domain=reg_domain,
+                timestamp=datetime.utcnow() - timedelta(days=rng.randint(7, 45)),
+                virality_score=0.3,
+                trust_score=0.97,
+            )
+            graph.add_node(reg)
+            graph.add_edge(EvidenceEdge(
+                edge_id="e_reg", src_id=reg_id, tgt_id=root_id,
+                relation="debunks", weight=0.92,
+            ))
+
+        if difficulty >= 3:
+            graph.applied_tactics.append("cherry_pick_study")
+        if difficulty >= 4:
+            graph.applied_tactics.append("backdate_article")
+
+        return graph
+
+    def oracle_steps(self, graph: ClaimGraph) -> int:
+        # Minimum: query_source (IR site) + cross_reference (SEC filing) + submit
+        return 2 + graph.difficulty
+
+    def has_manipulation(self, graph: ClaimGraph) -> bool:
+        return True   # SEC misrepresentation = deliberate material manipulation

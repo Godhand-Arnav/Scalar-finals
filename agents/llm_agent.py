@@ -1,19 +1,25 @@
 """
-LLMAgent — ReAct++ Hybrid LLM + RL Investigator
-Uses OpenAI-compliant API as primary integration point strictly conforming to OpenEnv.
-Implements: constrained FSM, chain-of-thought lookahead, ensemble voting.
+LLMAgent — Pure ReAct Investigator (v2.0)
+Implements: constrained FSM, chain-of-thought lookahead, exponential backoff.
+No fallback heuristic — the agent must reason through rate limits with retries.
 """
 
 from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+from tenacity import (
+    retry,
+    wait_exponential,
+    stop_after_attempt,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 
 import config
-from agents.heuristic_agent import HeuristicAgent
 from env.misinfo_env import ACTIONS, N_ACTIONS
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,8 @@ Golden Rules & Strategies:
 4. If the source diversity is suspicious -> use "network_cluster" to check for bot amplification.
 5. CHECK THE CONTRADICTIONS! In your context, if "Contradictions found: 1" or more, the claim is almost undoubtedly "fabricated", "out_of_context", or "misinfo".
 6. If the event is fully verified across reliable sources with 0 contradictions -> use "submit_verdict_real".
+7. For image forensics tasks: if you see ELA_score > 0.7 or diffusion signature, submit "fabricated".
+8. For financial/SEC fraud tasks: if source domain mismatch is detected, submit "fabricated".
 
 Tools available:
 - query_source: Find the true credibility rating of the domain.
@@ -64,7 +72,7 @@ Tools available:
 - cross_reference: Cross-check against real-world standard encyclopedias.
 - request_context: Grab deeper text context.
 - entity_link: Ensure people or statistics really exist.
-- temporal_audit: Map timeline anomalies.
+- temporal_audit: Map timeline anomalies / image metadata / EXIF data.
 - network_cluster: Expose bot nets or coordinated manipulation.
 - flag_manipulation: (FREE HIT) Tags deliberate adversarial intent.
 - submit_verdict_real
@@ -82,22 +90,26 @@ Respond ONLY with valid JSON structure matching exactly:
 }"""
 
 
+class _RateLimitError(Exception):
+    """Raised internally when API returns HTTP 429 to trigger tenacity retry."""
+    pass
+
+
 class LLMAgent:
     """
-    Hybrid LLM + rule-based agent using OpenAI API standard.
+    Pure ReAct LLM agent using OpenAI API standard.
+    v2.0: Heuristic fallback removed. Exponential backoff via tenacity.
     """
 
-    name = "llm_hybrid"
+    name = "llm_react_v2"
 
     def __init__(
         self,
         use_ensemble: bool = False,
         temperature: float = 0.2,
-        fallback_to_heuristic: bool = True,
     ):
         self.temperature = temperature
         self.use_ensemble = use_ensemble
-        self.fallback = HeuristicAgent() if fallback_to_heuristic else None
         self._fsm_state = "INITIAL"
         self._history: List[Dict] = []
         self._openai_client = None
@@ -117,28 +129,25 @@ class LLMAgent:
     def reset(self) -> None:
         self._fsm_state = "INITIAL"
         self._history.clear()
-        if self.fallback:
-            self.fallback.reset()
 
     def act(self, obs: np.ndarray, context: Optional[Dict] = None, **kwargs) -> int:
         allowed = FSM_ALLOWED_ACTIONS.get(self._fsm_state, ACTIONS)
         ctx_str = self._build_context(obs, context or {})
 
         if self._openai_client:
-            try:
-                if self.use_ensemble:
-                    action_name = self._ensemble_vote(ctx_str, allowed)
-                else:
-                    action_name = self._single_call(ctx_str, allowed)
-                if action_name and action_name in ACTIONS:
-                    self._advance_fsm(action_name)
-                    return ACTIONS.index(action_name)
-            except Exception as e:
-                logger.warning("LLM call failed: %s — falling back to heuristic", e)
+            if self.use_ensemble:
+                action_name = self._ensemble_vote(ctx_str, allowed)
+            else:
+                action_name = self._single_call(ctx_str, allowed)
+            if action_name and action_name in ACTIONS:
+                self._advance_fsm(action_name)
+                return ACTIONS.index(action_name)
 
-        if self.fallback:
-            return self.fallback.act(obs)
-        return ACTIONS.index("query_source")
+        # If no LLM client available, default to first allowed investigate action
+        first_investigate = next(
+            (a for a in allowed if not a.startswith("submit_")), "query_source"
+        )
+        return ACTIONS.index(first_investigate)
 
     def _single_call(self, ctx: str, allowed: List[str]) -> Optional[str]:
         messages = [
@@ -151,6 +160,13 @@ class LLMAgent:
         ]
         return self._call_openai(messages, allowed)
 
+    @retry(
+        retry=retry_if_exception_type(_RateLimitError),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=False,
+    )
     def _call_openai(self, messages: List[Dict], allowed: List[str]) -> Optional[str]:
         try:
             resp = self._openai_client.chat.completions.create(
@@ -163,6 +179,11 @@ class LLMAgent:
             raw = resp.choices[0].message.content
             return self._parse_action(raw, allowed)
         except Exception as e:
+            err_str = str(e).lower()
+            # Intercept 429 / rate-limit signals from Groq and re-raise as _RateLimitError
+            if "429" in err_str or "rate limit" in err_str or "rate_limit" in err_str:
+                logger.warning("Rate limit hit — tenacity will retry with backoff: %s", e)
+                raise _RateLimitError(str(e)) from e
             logger.debug("OpenAI model %s failed: %s", config.MODEL_NAME, e)
         return None
 

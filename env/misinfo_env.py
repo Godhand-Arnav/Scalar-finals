@@ -97,8 +97,9 @@ class MisInfoForensicsEnv(gym.Env):
             self.tool_registry = SimulatedToolRegistry()
 
         # ── Spaces ────────────────────────────────────────────────────────────
-        # Obs dim: 384 (SBERT embed) + 13 (tool history one-hot) + 6 (scalar features)
-        self.obs_dim = config.CLAIM_EMBED_DIM + N_ACTIONS + 6
+        # Obs dim v2.0: (MAX_OBSERVATION_NODES * CLAIM_EMBED_DIM) + N_ACTIONS + 6
+        # = 10 * 384 + 13 + 6 = 3859
+        self.obs_dim = config.MAX_OBSERVATION_NODES * config.CLAIM_EMBED_DIM + N_ACTIONS + 6
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(self.obs_dim,), dtype=np.float32,
@@ -114,7 +115,6 @@ class MisInfoForensicsEnv(gym.Env):
         self.tool_call_counts: Dict[str, int] = {}
         self.episode_id: str = ""
         self._prev_potential: float = 0.0
-        self._claim_embedding: Optional[np.ndarray] = None
         self._tool_history: np.ndarray = np.zeros(N_ACTIONS, dtype=np.float32)
         self._done: bool = True
 
@@ -152,8 +152,7 @@ class MisInfoForensicsEnv(gym.Env):
         self._tool_history = np.zeros(N_ACTIONS, dtype=np.float32)
         self._done = False
 
-        # Encode claim embedding
-        self._claim_embedding = self._embed(self.graph.root.text)
+        # Initialise prev potential for reward shaping
         self._prev_potential = compute_potential(self.graph)
 
         obs = self._build_obs()
@@ -277,8 +276,35 @@ class MisInfoForensicsEnv(gym.Env):
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _build_obs(self) -> np.ndarray:
-        claim_emb = self._claim_embedding if self._claim_embedding is not None \
-                    else np.zeros(config.CLAIM_EMBED_DIM, dtype=np.float32)
+        """
+        v2.0 Multimodal Observation:
+        Embeds up to MAX_OBSERVATION_NODES graph nodes sorted by discovery order.
+        Nodes not yet in graph are zero-padded → fixed-size 2D matrix flattened to 1D.
+        Shape: [MAX_OBSERVATION_NODES * CLAIM_EMBED_DIM | tool_history | scalars]
+        = [3840 | 13 | 6] = 3859-dim
+        """
+        # Build per-node embedding matrix (sorted: root first, then discovered nodes)
+        node_embeddings = []
+
+        if self.graph is not None:
+            # Root node always comes first
+            root_emb = self._embed(self.graph.root.text)
+            node_embeddings.append(root_emb)
+
+            # Add discovered (retrieved) non-root nodes, ordered by node_id for stability
+            for node_id, node in sorted(self.graph.nodes.items()):
+                if node_id == self.graph.root_claim_id:
+                    continue
+                if node.retrieved and len(node_embeddings) < config.MAX_OBSERVATION_NODES:
+                    node_embeddings.append(self._embed(node.text))
+
+        # Zero-pad to MAX_OBSERVATION_NODES
+        pad_count = config.MAX_OBSERVATION_NODES - len(node_embeddings)
+        for _ in range(pad_count):
+            node_embeddings.append(np.zeros(config.CLAIM_EMBED_DIM, dtype=np.float32))
+
+        node_matrix = np.concatenate(node_embeddings[:config.MAX_OBSERVATION_NODES])  # (3840,)
+
         budget_remaining = 1.0 - (self.steps / max(self.max_steps, 1))
         scalars = np.array([
             self.graph.evidence_coverage if self.graph else 0.0,
@@ -288,7 +314,8 @@ class MisInfoForensicsEnv(gym.Env):
             budget_remaining,
             self.steps / config.MAX_EPISODE_STEPS,
         ], dtype=np.float32)
-        obs = np.concatenate([claim_emb, self._tool_history, scalars])
+
+        obs = np.concatenate([node_matrix, self._tool_history, scalars])
         return obs.astype(np.float32)
 
     def _embed(self, text: str) -> np.ndarray:

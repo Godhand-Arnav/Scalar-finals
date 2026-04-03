@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 import httpx
 from env.claim_graph import ClaimGraph
+from env.utils.cache_manager import get_cache
 import config
 
 logger = logging.getLogger(__name__)
@@ -88,10 +89,19 @@ class TemporalAuditTool:
             "fl": "timestamp",
             "filter": "statuscode:200",
         }
+        cache = get_cache()
+        cache_key = f"wayback_cdx:{url}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached.get("timestamp")
+        if cache.internet_off:
+            return None
         async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
             r = await client.get(cdx_url, params=params)
             if r.status_code == 200:
                 rows = r.json()
                 if len(rows) > 1:   # first row is header
-                    return rows[1][0]
+                    ts = rows[1][0]
+                    cache.set(cache_key, {"timestamp": ts})
+                    return ts
         return None

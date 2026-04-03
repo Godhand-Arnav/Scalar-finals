@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict, List
 import httpx
 from env.claim_graph import ClaimGraph
+from env.utils.cache_manager import get_cache
 import config
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,18 @@ class CrossReferenceTool:
 
     async def _wiki_search_summary(self, keyword: str) -> str:
         url = f"{config.WIKIPEDIA_API_URL}/page/summary/{keyword.replace(' ', '_')}"
+        cache = get_cache()
+        cached = cache.get(url)
+        if cached is not None:
+            return cached.get("text", "")
+        if cache.internet_off:
+            return ""
         async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
             r = await client.get(url)
             if r.status_code == 200:
-                return r.json().get("extract", "")[:400]
+                text = r.json().get("extract", "")[:400]
+                cache.set(url, {"text": text})
+                return text
         return ""
 
     def _extract_keywords(self, text: str) -> List[str]:

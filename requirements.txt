@@ -17,6 +17,7 @@ duckduckgo-search>=5.0.0        # Completely free/keyless fact check search
 
 # ── LLM (OpenEnv Strict Client) ──────────────────────────────────────────────
 openai>=1.14.0                  # required client for evaluation
+tenacity>=8.2.0                 # exponential backoff for Groq 429 rate limits (v2.0)
 # huggingface_hub>=0.23.0       # optional HF Inference API fallback
 
 # ── Optional: GNN policy (install separately if GPU available) ────────────────

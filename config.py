@@ -61,6 +61,7 @@ GNN_HIDDEN_DIM: int = 128
 GNN_NUM_LAYERS: int = 3
 GNN_HEADS: int = 4               # for GAT
 CLAIM_EMBED_DIM: int = 384       # all-MiniLM output dim
+MAX_OBSERVATION_NODES: int = 10  # max graph nodes embedded in v2.0 multimodal obs
 POLICY_HIDDEN_DIMS: List[int] = field(default_factory=lambda: [256, 128])
 
 # ─── Curriculum ───────────────────────────────────────────────────────────────

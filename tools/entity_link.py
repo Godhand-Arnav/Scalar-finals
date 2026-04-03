@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, List
 import httpx
 from env.claim_graph import ClaimGraph
+from env.utils.cache_manager import get_cache
 import config
 
 logger = logging.getLogger(__name__)
@@ -77,13 +78,22 @@ class EntityLinkTool:
             "format": "json",
             "limit": 1,
         }
+        cache = get_cache()
+        cache_key = f"wikidata_entity:{label}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if cache.internet_off:
+            return {}
         async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
             r = await client.get(url, params=params)
             if r.status_code == 200:
                 results = r.json().get("search", [])
                 if results:
-                    return {
+                    result = {
                         "id": results[0].get("id"),
                         "description": results[0].get("description", ""),
                     }
+                    cache.set(cache_key, result)
+                    return result
         return {}

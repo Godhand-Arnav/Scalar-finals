@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict
 import httpx
 from env.claim_graph import ClaimGraph
+from env.utils.cache_manager import get_cache
 import config
 
 logger = logging.getLogger(__name__)
@@ -64,17 +65,25 @@ class TraceOriginTool:
         }
 
     async def _wayback_check(self, url: str) -> Dict[str, Any]:
+        cache = get_cache()
         api = f"{config.WAYBACK_API_URL}?url={url}&timestamp=20100101"
+        cached = cache.get(api)
+        if cached is not None:
+            return cached
+        if cache.internet_off:
+            return {"available": False}
         async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
             r = await client.get(api)
             if r.status_code == 200:
                 data = r.json()
                 snap = data.get("archived_snapshots", {}).get("closest", {})
-                return {
+                result = {
                     "available": snap.get("available", False),
                     "earliest": snap.get("timestamp", ""),
                     "url": snap.get("url", ""),
                 }
+                cache.set(api, result)
+                return result
         return {"available": False}
 
     async def _wikidata_lookup(self, term: str) -> Dict[str, Any]:
@@ -86,8 +95,15 @@ class TraceOriginTool:
           SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
         }} LIMIT 1
         """
-        headers = {"Accept": "application/sparql-results+json", "User-Agent": "FORGE/1.0"}
+        headers = {"Accept": "application/sparql-results+json", "User-Agent": "FORGE/2.0"}
         params = {"query": sparql_query, "format": "json"}
+        cache = get_cache()
+        cache_key = f"{config.WIKIDATA_SPARQL_URL}?term={term}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if cache.internet_off:
+            return {}
         async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
             r = await client.get(config.WIKIDATA_SPARQL_URL, params=params, headers=headers)
             if r.status_code == 200:
@@ -95,10 +111,12 @@ class TraceOriginTool:
                 bindings = data.get("results", {}).get("bindings", [])
                 if bindings:
                     b = bindings[0]
-                    return {
+                    result = {
                         "label": b.get("itemLabel", {}).get("value", ""),
                         "country_of_origin": b.get("countryLabel", {}).get("value", ""),
                     }
+                    cache.set(cache_key, result)
+                    return result
         return {}
 
     def _summary(self, wayback, wikidata, suspicious, new_nodes) -> str:

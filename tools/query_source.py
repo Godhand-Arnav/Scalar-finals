@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict
 import httpx
 from env.claim_graph import ClaimGraph
+from env.utils.cache_manager import get_cache
 import config
 
 logger = logging.getLogger(__name__)
@@ -59,12 +60,20 @@ class QuerySourceTool:
     async def _wikipedia_search(self, query: str) -> Dict[str, Any]:
         clean = query.split(".")[0][:80]   # first sentence, max 80 chars
         url = f"{config.WIKIPEDIA_API_URL}/page/summary/{clean.replace(' ', '_')}"
+        cache = get_cache()
+        cached = cache.get(url)
+        if cached is not None:
+            return cached
+        if cache.internet_off:
+            return cache.unavailable_response("wikipedia_offline")
         try:
             async with httpx.AsyncClient(timeout=config.TOOL_CALL_TIMEOUT_SEC) as client:
                 r = await client.get(url)
                 if r.status_code == 200:
                     data = r.json()
-                    return {"summary": data.get("extract", "")[:300]}
+                    result = {"summary": data.get("extract", "")[:300]}
+                    cache.set(url, result)
+                    return result
         except Exception as e:
             logger.debug("Wikipedia search failed: %s", e)
         return {}

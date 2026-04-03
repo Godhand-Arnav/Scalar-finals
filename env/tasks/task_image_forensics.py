@@ -1,0 +1,206 @@
+"""
+Task: ImageForensicsTask — AI-Generated Deepfake Image Detection (v2.0)
+
+Simulates a forensic investigation into a viral image claim. The agent must
+determine whether an image is real or AI-generated (deepfake / diffusion model
+output) using simulated ELA (Error Level Analysis) and diffusion artifact signatures
+surfaced through the existing tool set.
+
+Tools overloaded for image forensics:
+- temporal_audit: Reads EXIF metadata and ELA score for the image
+- cross_reference: Reverse image search — looks for source image discrepancies
+- entity_link: Verifies whether depicted persons/organisations actually exist
+- trace_origin: Traces the posting origin timestamp
+"""
+
+from __future__ import annotations
+
+import random
+import uuid
+from datetime import datetime, timedelta
+
+from env.claim_graph import ClaimGraph, ClaimNode, EvidenceEdge
+from env.tasks.task_base import BaseTask
+
+
+_IMAGE_SCENARIOS = [
+    {
+        "claim": "Leaked satellite photo shows secret military base being constructed in northern Finland.",
+        "image_desc": "Satellite imagery shared via Telegram group. Resolution too high for public-tier satellites.",
+        "ela_score": 0.84,          # >0.7 → strong AI-generation signal
+        "diffusion_signature": True,
+        "source_domain": "tgchannel-leaked.ru",
+    },
+    {
+        "claim": "Photo shows world leader shaking hands with known terrorist at undisclosed location.",
+        "image_desc": "JPEG posted to anonymous imageboard. Face-swap artifacts detected around neck boundary.",
+        "ela_score": 0.91,
+        "diffusion_signature": True,
+        "source_domain": "deepstatealert.net",
+    },
+    {
+        "claim": "Newly surfaced photo shows police brutality incident that mainstream media is hiding.",
+        "image_desc": "Image circulating on social media. Reverse-image search finds original unedited photo from 2016.",
+        "ela_score": 0.72,
+        "diffusion_signature": False,   # not AI — just re-contextualized old photo
+        "source_domain": "citizenjustice.info",
+    },
+    {
+        "claim": "Authentic video still from private Epstein island shows prominent politician.",
+        "image_desc": "Low-quality JPEG, face region shows diffusion noise pattern. No EXIF metadata present.",
+        "ela_score": 0.88,
+        "diffusion_signature": True,
+        "source_domain": "truthunleashed.co",
+    },
+    {
+        "claim": "Real photo of UFO taken by US Air Force pilot over Pacific Ocean last week.",
+        "image_desc": "High-resolution PNG with missing EXIF. Noise pattern inconsistent with camera sensor.",
+        "ela_score": 0.79,
+        "diffusion_signature": True,
+        "source_domain": "ufodisclosure.net",
+    },
+]
+
+_DEBUNK_DOMAINS = ["bellingcat.com", "snopes.com", "bbc.com/verify", "reuters.com"]
+
+
+class ImageForensicsTask(BaseTask):
+    """
+    Agent investigates a viral image/video claim to determine if it is
+    AI-generated (fabricated) or a real-but-miscontextualized photograph.
+
+    Tools are used in image-forensics mode:
+    - temporal_audit: surfaces ELA_score and EXIF anomalies
+    - cross_reference: reveals reverse-image-search matches or lack thereof
+    """
+
+    task_id = "image_forensics"
+    description = (
+        "Agent investigates a viral image claim to determine if it is AI-generated "
+        "(deepfake / Stable Diffusion output) or a real photograph used out of context."
+    )
+
+    def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
+        rng = random.Random(seed)
+        scenario = rng.choice(_IMAGE_SCENARIOS)
+
+        ela_score = scenario["ela_score"]
+        has_diffusion = scenario["diffusion_signature"]
+
+        # True label: fabricated if AI-generated, out_of_context if real photo re-used
+        true_label = "fabricated" if has_diffusion else "out_of_context"
+
+        graph_id = str(uuid.uuid4())
+        root_id  = "node_root"
+
+        # ── Root node: the viral image claim ─────────────────────────────────
+        root = ClaimNode(
+            node_id=root_id,
+            text=scenario["claim"],
+            source_url=f"https://{scenario['source_domain']}/post/{rng.randint(1000, 9999)}",
+            domain=scenario["source_domain"],
+            timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 14)),
+            virality_score=rng.uniform(0.7, 0.99),
+            trust_score=0.1,
+            metadata={
+                # These are surfaced by temporal_audit (ELA / EXIF forensics)
+                "image_description": scenario["image_desc"],
+                "ela_score":         ela_score,
+                "diffusion_signature": has_diffusion,
+                "exif_missing":      has_diffusion,       # AI images usually lack EXIF
+                "forensics_domain":  "image",
+            },
+        )
+
+        graph = ClaimGraph(
+            graph_id=graph_id,
+            root_claim_id=root_id,
+            true_label=true_label,
+            difficulty=difficulty,
+            applied_tactics=["splice_image_caption"] if not has_diffusion else [
+                "fabricate_statistic", "splice_image_caption"
+            ],
+        )
+        graph.add_node(root)
+
+        # ── ELA Analysis node (surfaced by temporal_audit or cross_reference) ──
+        ela_id = "node_ela_analysis"
+        ela_verdict = "AI-GENERATED" if has_diffusion else "AUTHENTIC_BUT_RECIRCULATED"
+        ela = ClaimNode(
+            node_id=ela_id,
+            text=(
+                f"ELA Analysis: ela_score={ela_score:.2f} "
+                f"({'HIGH — diffusion artifact pattern detected' if has_diffusion else 'moderate — possible compression artifact'}). "
+                f"Verdict: {ela_verdict}."
+            ),
+            source_url="https://fotoforensics.com/analysis",
+            domain="fotoforensics.com",
+            timestamp=datetime.utcnow() - timedelta(hours=rng.randint(1, 48)),
+            virality_score=0.05,
+            trust_score=0.85,
+            metadata={"forensics_type": "ela", "ela_score": ela_score},
+        )
+        graph.add_node(ela)
+        graph.add_edge(EvidenceEdge(
+            edge_id="e_ela", src_id=ela_id, tgt_id=root_id,
+            relation="contradicts" if has_diffusion else "cites",
+            weight=ela_score,
+        ))
+
+        # ── Debunking node: reverse-image-search / OSINT finding ─────────────
+        deb_domain = rng.choice(_DEBUNK_DOMAINS)
+        deb_id = "node_debunk"
+        if has_diffusion:
+            deb_text = (
+                f"OSINT: No authentic source found for image. "
+                f"Diffusion noise detected in pixel frequency analysis. "
+                f"Image likely generated by Stable Diffusion or Midjourney."
+            )
+        else:
+            deb_text = (
+                f"Reverse image search: original photo dated "
+                f"{(datetime.utcnow() - timedelta(days=rng.randint(365, 2000))).strftime('%Y-%m-%d')} "
+                f"— not from the claimed time/location."
+            )
+        deb = ClaimNode(
+            node_id=deb_id,
+            text=deb_text,
+            source_url=f"https://{deb_domain}/fact-check/{rng.randint(10000, 99999)}",
+            domain=deb_domain,
+            timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 7)),
+            virality_score=0.1,
+            trust_score=0.93,
+        )
+        graph.add_node(deb)
+        graph.add_edge(EvidenceEdge(
+            edge_id="e_deb", src_id=deb_id, tgt_id=root_id,
+            relation="debunks", weight=0.95,
+        ))
+
+        # ── Difficulty: add bot amplification nodes ───────────────────────────
+        for i in range(difficulty - 1):
+            bot_id = f"node_bot_{i}"
+            bot = ClaimNode(
+                node_id=bot_id,
+                text=f"Automated account amplifying the image claim (bot account {i+1}).",
+                source_url=f"https://twitter.com/bot_account_{rng.randint(1000, 9999)}",
+                domain="twitter.com",
+                timestamp=datetime.utcnow() - timedelta(hours=rng.randint(1, 72)),
+                virality_score=rng.uniform(0.5, 0.85),
+                trust_score=0.05,
+                metadata={"is_bot": True},
+            )
+            graph.add_node(bot)
+            graph.add_edge(EvidenceEdge(
+                edge_id=f"e_bot_{i}", src_id=bot_id, tgt_id=root_id,
+                relation="amplifies", weight=rng.uniform(0.6, 0.9),
+            ))
+
+        return graph
+
+    def oracle_steps(self, graph: ClaimGraph) -> int:
+        # Minimum: temporal_audit (ELA) + cross_reference (reverse image) + submit
+        return 2 + graph.difficulty
+
+    def has_manipulation(self, graph: ClaimGraph) -> bool:
+        return True   # Image forensics always involves deliberate manipulation
