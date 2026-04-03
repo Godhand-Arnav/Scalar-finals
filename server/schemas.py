@@ -42,3 +42,17 @@ class StateResponse(BaseModel):
     done: bool
     total_reward: float
     info: Dict[str, Any]
+
+
+class GradeResponse(BaseModel):
+    episode_id: str
+    verdict: Optional[str] = None
+    true_label: str
+    correct: bool
+    accuracy: float
+    manipulation_detected: bool
+    evidence_coverage: float
+    steps_used: int
+    efficiency_score: float
+    total_reward: float
+    grade_breakdown: Dict[str, float]
