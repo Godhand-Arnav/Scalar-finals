@@ -1,0 +1,42 @@
+"""Step execution routes (OpenEnv spec)."""
+
+from __future__ import annotations
+from fastapi import APIRouter, HTTPException
+
+from env.misinfo_env import ACTIONS
+from server.schemas import StepRequest, StepResponse
+from server.state import EPISODE_STORE
+
+router = APIRouter()
+
+
+@router.post("/step", response_model=StepResponse)
+async def take_step(req: StepRequest):
+    eid = req.episode_id or "latest"
+    if eid not in EPISODE_STORE:
+        raise HTTPException(status_code=404, detail="Active episode not found")
+
+    record = EPISODE_STORE[eid]
+    if record["done"]:
+        raise HTTPException(status_code=400, detail="Episode is already done. Call /reset")
+
+    env = record["env"]
+    try:
+        obs, reward, terminated, truncated, info = env.step(req.action)
+    except AssertionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    done = terminated or truncated
+    record["obs"]          = obs
+    record["total_reward"] += reward
+    record["done"]         = done
+
+    if info.get("verdict"):
+        record["verdict"] = info["verdict"]
+
+    return StepResponse(
+        observation=obs.tolist(),
+        reward=round(float(reward), 5),
+        done=done,
+        info=info,
+    )

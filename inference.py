@@ -1,0 +1,104 @@
+"""
+inference.py — OpenEnv Compatible Inference Script
+Must use OpenAI client natively and output strictly formatted logs.
+Runs under 20 mins, <8GB memory footprint.
+"""
+
+from __future__ import annotations
+import argparse
+import json
+import logging
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+import config
+
+# Disable standard logging to prevent breaking stdout grader parsing
+logging.getLogger("env").setLevel(logging.CRITICAL)
+logging.getLogger("agents").setLevel(logging.CRITICAL)
+
+
+def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
+    from env.misinfo_env import MisInfoForensicsEnv, ACTIONS
+    from agents.llm_agent import LLMAgent
+
+    # Required specification: must use LLMAgent configured to standard endpoints
+    agent = LLMAgent(fallback_to_heuristic=True)
+    results = []
+    
+    tasks = ["fabricated_stats", "out_of_context", "coordinated_campaign"]
+
+    for task_idx, task_name in enumerate(tasks):
+        # We instantiate a specific task environment for reproducibility
+        env = MisInfoForensicsEnv(task_names=[task_name], difficulty=difficulty)
+        
+        for ep in range(n_episodes_per_task):
+            ep_absolute = (task_idx * n_episodes_per_task) + ep + 1
+            obs, info = env.reset(seed=1000 + ep_absolute)
+            if hasattr(agent, "reset"):
+                agent.reset()
+
+            ep_start = time.time()
+            ep_reward = 0.0
+            done = False
+            verdict = None
+
+            # [START] emit
+            print(f"[START] {json.dumps({'episode': ep_absolute, 'task': info['task_id']})}", flush=True)
+
+            while not done:
+                action = agent.act(obs)
+                action_name = ACTIONS[action]
+                obs, reward, terminated, truncated, step_info = env.step(action)
+                ep_reward += reward
+                done = terminated or truncated
+
+                # [STEP] emit
+                print(f"[STEP] {json.dumps({'action': action_name, 'reward': round(float(reward), 4)})}", flush=True)
+
+                if step_info.get("verdict"):
+                    verdict = step_info["verdict"]
+
+            elapsed = time.time() - ep_start
+            true_label = env.graph.true_label if env.graph else "unknown"
+            correct    = (verdict == true_label)
+            
+            # Clip ep_reward to 0.0 - 1.0 constraint for the whole payload if it drifted
+            clamped_ep_reward = max(0.0, min(1.0, float(ep_reward)))
+
+            # [END] emit
+            result = {
+                "episode":    ep_absolute,
+                "verdict":    verdict,
+                "true_label": true_label,
+                "correct":    correct,
+                "reward":     round(clamped_ep_reward, 4),
+                "steps":      env.steps,
+                "time_s":     round(elapsed, 2),
+            }
+            print(f"[END] {json.dumps(result)}", flush=True)
+            results.append(result)
+
+    accuracy = sum(r["correct"] for r in results) / len(results)
+    mean_reward = sum(r["reward"] for r in results) / len(results)
+    
+    summary = {
+        "total_episodes": len(results),
+        "accuracy":    round(accuracy, 4),
+        "mean_reward": round(mean_reward, 4),
+    }
+    # Final summary can be standard print
+    print(f"\nFINAL_SUMMARY: {json.dumps(summary)}")
+    return summary
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="FORGE OpenEnv Eval Inference")
+    parser.add_argument("--episodes",  type=int, default=5)
+    parser.add_argument("--difficulty",type=int, default=1, choices=[1, 2, 3, 4])
+    args = parser.parse_args()
+
+    run_evaluation(args.episodes, args.difficulty)

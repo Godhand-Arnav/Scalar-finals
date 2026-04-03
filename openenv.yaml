@@ -1,0 +1,10 @@
+name: forge
+version: 1.0.0
+description: "FORGE: Forensic RL Graph Environment for Misinformation Investigation"
+docker:
+  build: .
+  port: 7860
+endpoints:
+  reset: /reset    # POST
+  step: /step      # POST
+  state: /state    # GET

@@ -1,0 +1,153 @@
+"""
+FORGE FastAPI Server — OpenEnv-compatible REST API.
+
+Endpoints:
+  POST /episodes              → Create new episode
+  POST /episodes/{id}/step    → Take action
+  GET  /episodes/{id}/grade   → Get final grade
+  GET  /episodes/{id}         → Get episode state
+  DELETE /episodes/{id}       → Delete episode
+  GET  /actions               → List all valid actions
+  GET  /health                → Health check
+  GET  /leaderboard           → Agent leaderboard
+  GET  /grades/summary        → Aggregate grade summary
+"""
+
+from __future__ import annotations
+import logging
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+import config
+from server.state import EPISODE_STORE
+from env.misinfo_env import ACTIONS
+
+logging.basicConfig(level=config.LOG_LEVEL, format=config.LOG_FORMAT)
+logger = logging.getLogger("forge.server")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("🚀 FORGE server starting — visit /docs for interactive API")
+    yield
+    logger.info("🛑 FORGE shutting down. Active episodes at close: %d", len(EPISODE_STORE))
+    EPISODE_STORE.clear()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="FORGE — MisInfo Forensics RL Environment",
+        description=(
+            "OpenEnv-compatible API for the FORGE misinformation investigation "
+            "reinforcement learning environment. All APIs are 100% free to use."
+        ),
+        version="1.0.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # ── Routers (imported here, after app is created, no circular dep) ────────
+    from server.routes.episode import router as episode_router
+    from server.routes.step    import router as step_router
+    from server.routes.grade   import router as grade_router
+
+    app.include_router(episode_router, prefix="", tags=["OpenEnv"])
+    app.include_router(step_router,    prefix="", tags=["OpenEnv"])
+    app.include_router(grade_router,   prefix="/episodes", tags=["Grading"])
+
+    # ── Static endpoints ──────────────────────────────────────────────────────
+    @app.get("/health", tags=["System"])
+    async def health():
+        return {
+            "status": "healthy",
+            "active_episodes": len(EPISODE_STORE),
+            "version": "1.0.0",
+        }
+
+    @app.get("/actions", tags=["System"])
+    async def list_actions():
+        _descriptions = {
+            "query_source":                  "Query primary source (Wikipedia + Google FactCheck — free)",
+            "trace_origin":                  "Trace origin via Wayback Machine + Wikidata (free)",
+            "cross_reference":               "Cross-check against multiple Wikipedia articles (free)",
+            "request_context":               "Request context from authoritative sources (free)",
+            "entity_link":                   "Link named entities to Wikidata records (free)",
+            "temporal_audit":                "Audit timestamps via Wayback CDX API (free)",
+            "network_cluster":               "Detect bot amplification clusters (local, free)",
+            "flag_manipulation":             "Flag deliberate manipulation — FREE action (no step cost)",
+            "submit_verdict_real":           "Submit verdict: REAL",
+            "submit_verdict_misinfo":        "Submit verdict: MISINFORMATION",
+            "submit_verdict_satire":         "Submit verdict: SATIRE",
+            "submit_verdict_out_of_context": "Submit verdict: OUT OF CONTEXT",
+            "submit_verdict_fabricated":     "Submit verdict: FABRICATED",
+        }
+        return {
+            "actions": [
+                {
+                    "index": i,
+                    "name": name,
+                    "is_verdict": name.startswith("submit_verdict"),
+                    "is_free": name == "flag_manipulation",
+                    "description": _descriptions.get(name, ""),
+                }
+                for i, name in enumerate(ACTIONS)
+            ]
+        }
+
+    @app.get("/leaderboard", tags=["System"])
+    async def leaderboard():
+        from server.routes.grade import GRADE_LOG
+        from collections import defaultdict
+        if not GRADE_LOG:
+            return {"entries": [], "message": "No completed episodes yet."}
+        stats: dict = defaultdict(lambda: {"rewards": [], "correct": [], "episodes": 0})
+        for entry in GRADE_LOG:
+            aid = entry.get("agent_id", "anonymous")
+            stats[aid]["rewards"].append(entry["total_reward"])
+            stats[aid]["correct"].append(entry["correct"])
+            stats[aid]["episodes"] += 1
+        board = [
+            {
+                "agent_id":      aid,
+                "accuracy":      round(sum(s["correct"]) / len(s["correct"]), 4),
+                "mean_reward":   round(sum(s["rewards"]) / len(s["rewards"]), 4),
+                "episodes_played": s["episodes"],
+            }
+            for aid, s in stats.items()
+        ]
+        board.sort(key=lambda x: x["accuracy"], reverse=True)
+        return {"entries": board}
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request, exc):
+        logger.error("Unhandled exception: %s", exc, exc_info=True)
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+    return app
+
+
+app = create_app()
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "server.main:app",
+        host=config.SERVER_HOST,
+        port=config.SERVER_PORT,
+        reload=True,
+    )

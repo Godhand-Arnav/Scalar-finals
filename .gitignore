@@ -1,0 +1,4 @@
+# The real .env file should be kept secret. Do not commit it.
+.env
+__pycache__/
+*.pyc
