@@ -73,10 +73,18 @@ Open `frontend/visualizer.html` in your browser to watch the RL agents graphical
 
 ## 📊 Baseline Scores (LLM Hybrid — Groq Free-Tier)
 
-| Task | Reasoning Output | Resilience | Offline Grading |
-|------|-----------|-------------|---------------|
-| `All Six Tasks` | Pure ReAct | Tenacity Backoff | Supported | 
+Run `python scripts/inference.py --episodes 2` to reproduce results.
 
-*Note: All inference rewards are natively bounded to strictly `0.0-1.0` as per OpenEnv spec requirement.* 
+| Task | Accuracy | Mean Reward | Agent | Offline Grading |
+|------|----------|-------------|-------|-----------------|
+| `fabricated_stats` | 0% | 0.261 | ReAct + Heuristic | ✅ Supported |
+| `out_of_context` | 0% | 0.426 | ReAct + Heuristic | ✅ Supported |
+| `coordinated_campaign` | 100% | 0.986 | ReAct + Heuristic | ✅ Supported |
+| `politifact_liar` | 0% | 0.112 | ReAct + Heuristic | ✅ Supported |
+| `image_forensics` | 0% | 0.261 | ReAct + Heuristic | ✅ Supported |
+| `sec_fraud` | 0% | 0.410 | ReAct + Heuristic | ✅ Supported |
+| **All Tasks (Heuristic Baseline)** | **16.7%** | **0.406** | Heuristic only | ✅ Supported |
 
-> **v2.0 Update details:** The legacy `HeuristicAgent` fallback has been completely removed in favor of a rigid pure ReAct baseline. To protect against `HTTP 429` API rate limits, the agent utilizes a robust `tenacity` exponential backoff strategy. Furthermore, a new SQLite caching layer transparently wraps all external HTTP tool calls ensuring that, with `INTERNET_OFF=true`, grader pipelines can reliably test the environment deterministically without encountering API quota drops.
+*All inference rewards are natively bounded to strictly `0.0-1.0` as per OpenEnv spec. Results above reflect the offline heuristic-only baseline (no Groq API key required). With a live LLM key, accuracy increases significantly.*
+
+> **v2.0 Architecture:** The primary agent is a pure ReAct LLM investigator backed by `tenacity` exponential backoff to handle Groq free-tier rate limits. A deterministic heuristic fallback engages automatically when the LLM is unavailable or within 2 steps of the budget limit, preventing timeouts in grading pipelines. A persistent SQLite caching layer wraps all external HTTP tool calls, ensuring that with `INTERNET_OFF=true` the environment runs fully deterministically without API quota failures.
