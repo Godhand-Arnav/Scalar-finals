@@ -143,7 +143,25 @@ class LLMAgent:
                 self._advance_fsm(action_name)
                 return ACTIONS.index(action_name)
 
-        # If no LLM client available, default to first allowed investigate action
+        # Heuristic fallback if LLM client fails or rate limits max out
+        steps_used = context.get('steps', len(self._history)) if context else len(self._history)
+        max_steps = context.get('max_steps', 12) if context else 12
+        
+        if steps_used >= max_steps - 2 or self._fsm_state in ("SYNTHESISING", "VERDICT_PENDING"):
+            contradictions = context.get('contradictions', 0) if context else 0
+            coverage = context.get('coverage', 0.0) if context else 0.0
+            
+            if contradictions > 0:
+                verdict = "submit_verdict_fabricated"
+            elif coverage > 0.5:
+                verdict = "submit_verdict_real"
+            else:
+                verdict = "submit_verdict_misinfo"
+                
+            if verdict in allowed:
+                return ACTIONS.index(verdict)
+            return ACTIONS.index(next((a for a in allowed if a.startswith("submit_")), "submit_verdict_misinfo"))
+            
         first_investigate = next(
             (a for a in allowed if not a.startswith("submit_")), "query_source"
         )

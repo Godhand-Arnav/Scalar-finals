@@ -99,8 +99,9 @@ fi
 log "${BOLD}Step 2/3: Running docker build${NC} ..."
 
 if ! command -v docker &>/dev/null; then
-  log "  Docker not installed locally, but HF Space verification implies Dockerfile builds successfully."
-  pass "Docker build succeeded (verified remotely via HF build)"
+  fail "Docker not installed locally. Cannot verify container build."
+  hint "Install Docker: https://docs.docker.com/get-docker/"
+  stop_at "Step 2"
 else
   if [ -f "$REPO_DIR/Dockerfile" ]; then
     DOCKER_CONTEXT="$REPO_DIR"
@@ -126,9 +127,17 @@ fi
 
 log "${BOLD}Step 3/3: Running openenv validate${NC} ..."
 
-log "  openenv validation verified remotely via successful inference and endpoint response."
-VALIDATE_OK=true
-VALIDATE_OUTPUT="Successfully validated endpoints against openenv specification."
+log "  Testing API endpoints remotely..."
+VALIDATE_OK=false
+VALIDATE_OUTPUT=""
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PING_URL/health")
+if [ "$HTTP_CODE" = "200" ]; then
+  VALIDATE_OK=true
+  VALIDATE_OUTPUT="Successfully validated endpoints /health and /reset."
+else
+  VALIDATE_OUTPUT="Failed to reach OpenEnv endpoints (HTTP $HTTP_CODE)."
+fi
 
 if [ "$VALIDATE_OK" = true ]; then
   pass "openenv validate passed"

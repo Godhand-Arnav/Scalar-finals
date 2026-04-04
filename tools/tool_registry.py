@@ -6,10 +6,15 @@ ToolRegistry: Live calls to free public APIs.
 
 from __future__ import annotations
 import asyncio
+import json
 import logging
+import os
 import random
+import sqlite3
 import time
 from typing import Any, Dict, Optional
+
+import config
 from env.claim_graph import ClaimGraph
 
 logger = logging.getLogger(__name__)
@@ -170,23 +175,53 @@ class ToolRegistry:
             "temporal_audit":  TemporalAuditTool(),
             "network_cluster": NetworkClusterTool(),
         }
-        self._cache: Dict[str, Any] = {}
+        
+        db_path = config.DATABASE_URL.replace("sqlite:///", "")
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._cursor = self._conn.cursor()
+        self._cursor.execute(
+            "CREATE TABLE IF NOT EXISTS tool_cache (cache_key TEXT PRIMARY KEY, result_json TEXT)"
+        )
+        self._conn.commit()
 
     def call(self, tool_name: str, graph: ClaimGraph, **kwargs) -> Dict[str, Any]:
         cache_key = f"{tool_name}:{graph.graph_id}:{graph.steps_used if hasattr(graph, 'steps_used') else 0}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        
+        self._cursor.execute("SELECT result_json FROM tool_cache WHERE cache_key = ?", (cache_key,))
+        row = self._cursor.fetchone()
+        if row:
+            try:
+                cache_result = json.loads(row[0])
+                return cache_result
+            except json.JSONDecodeError:
+                pass
 
         tool = self._tools.get(tool_name)
         if tool is None:
             return {"error": "tool_not_found", "new_nodes": 0, "new_contradictions": 0}
 
         try:
-            result = asyncio.run(tool.execute(graph, **kwargs))
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(tool.execute(graph, **kwargs))
-            loop.close()
+            if os.getenv("INTERNET_OFF", "false").lower() == "true":
+                logger.debug(f"INTERNET_OFF is true, simulating {tool_name}")
+                result = SimulatedToolRegistry().call(tool_name, graph, **kwargs)
+            else:
+                try:
+                    result = asyncio.run(tool.execute(graph, **kwargs))
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    result = loop.run_until_complete(tool.execute(graph, **kwargs))
+                    loop.close()
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            result = SimulatedToolRegistry().call(tool_name, graph, **kwargs)
 
-        self._cache[cache_key] = result
+        try:
+            self._cursor.execute(
+                "INSERT OR REPLACE INTO tool_cache (cache_key, result_json) VALUES (?, ?)",
+                (cache_key, json.dumps(result))
+            )
+            self._conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to write to tool_cache: {e}")
+
         return result
