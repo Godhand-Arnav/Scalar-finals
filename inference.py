@@ -48,9 +48,10 @@ def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
             ep_reward = 0.0
             done = False
             verdict = None
+            step_rewards = []
 
             # [START] emit
-            print(f"[START] {json.dumps({'episode': ep_absolute, 'task': info['task_id']})}", flush=True)
+            print(f"[START] task={info['task_id']} env=forge model={config.MODEL_NAME}", flush=True)
 
             step_info: dict = {}  # pre-initialise so first-iteration context build doesn't NameError
             while not done:
@@ -67,9 +68,10 @@ def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
                 obs, reward, terminated, truncated, step_info = env.step(action)
                 ep_reward += reward
                 done = terminated or truncated
+                step_rewards.append(reward)
 
                 # [STEP] emit
-                print(f"[STEP] {json.dumps({'action': action_name, 'reward': round(float(reward), 4)})}", flush=True)
+                print(f"[STEP] step={env.steps} action={action_name} reward={reward:.2f} done={str(done).lower()} error=null", flush=True)
 
                 if step_info.get("verdict"):
                     verdict = step_info["verdict"]
@@ -83,6 +85,9 @@ def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
             final_reward = float(np.clip(ep_reward, 0.0, 1.0))
 
             # [END] emit
+            rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+            print(f"[END] success={str(correct).lower()} steps={env.steps} score={final_reward:.3f} rewards={rewards_str}", flush=True)
+            
             result = {
                 "episode":    ep_absolute,
                 "verdict":    verdict,
