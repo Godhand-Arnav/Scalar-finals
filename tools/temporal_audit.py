@@ -5,7 +5,7 @@ Detects backdated articles and mismatched claim/event timelines.
 
 from __future__ import annotations
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta  # FIXED: removed unused timezone import
 from typing import Any, Dict, Optional
 import httpx
 from env.claim_graph import ClaimGraph
@@ -35,10 +35,9 @@ class TemporalAuditTool:
         # 1. Article exists before claimed event?
         if earliest_archive and claimed_date:
             try:
-                archive_dt = datetime.strptime(earliest_archive[:8], "%Y%m%d").replace(
-                    tzinfo=timezone.utc
-                )
-                claim_dt = claimed_date.replace(tzinfo=timezone.utc) if claimed_date.tzinfo is None else claimed_date
+                archive_dt = datetime.strptime(earliest_archive[:8], "%Y%m%d")  # FIXED: keep naive to match claimed_date
+                # FIXED: strip tzinfo from claimed_date if present so both sides are naive UTC
+                claim_dt = claimed_date.replace(tzinfo=None) if claimed_date.tzinfo is not None else claimed_date
                 if archive_dt < claim_dt - timedelta(days=30):
                     anomalies.append("article_predates_claimed_event")
                     new_contradictions += 1

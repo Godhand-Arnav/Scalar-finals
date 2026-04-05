@@ -82,7 +82,7 @@ class QuerySourceTool:
         """Use DuckDuckGo to search for fact-checks of the string. Requires zero API keys."""
         try:
             from duckduckgo_search import DDGS
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()  # FIXED: get_event_loop() deprecated in 3.10+ inside async context
             
             def _search():
                 with DDGS() as ddgs:

@@ -51,13 +51,14 @@ def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
             # [START] emit
             print(f"[START] {json.dumps({'episode': ep_absolute, 'task': info['task_id']})}", flush=True)
 
+            step_info: dict = {}  # FIXED: pre-initialise so first-iteration context build doesn't NameError
             while not done:
                 context = {
                     "steps": env.steps,
                     "max_steps": env.max_steps,
                     "coverage": env.graph.evidence_coverage if env.graph else 0.0,
                     "contradictions": env.graph.contradiction_surface_area if env.graph else 0,
-                    "last_tool_result": step_info.get("tool_result") if 'step_info' in locals() else None,
+                    "last_tool_result": step_info.get("tool_result"),  # FIXED: step_info always defined now
                     "claim_text": env.graph.root.text if env.graph else ""
                 }
                 action = agent.act(obs, context=context)

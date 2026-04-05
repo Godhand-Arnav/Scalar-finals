@@ -24,10 +24,8 @@ RUN python -c "from sentence_transformers import SentenceTransformer; \
 COPY . .
 
 # ── Environment variables (set at runtime, no secrets in image) ───────────────
-ENV OPENAI_API_KEY=""
 ENV API_BASE_URL="https://api.groq.com/openai/v1"
 ENV MODEL_NAME="llama-3.1-8b-instant"
-ENV HF_TOKEN=""
 ENV SERVER_HOST="0.0.0.0"
 ENV SERVER_PORT="7860"
 

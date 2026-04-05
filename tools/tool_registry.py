@@ -184,6 +184,16 @@ class ToolRegistry:
         )
         self._conn.commit()
 
+    def __del__(self):
+        """Safely close sqlite connection to prevent resource leaks/locks."""
+        try:
+            if hasattr(self, "_cursor") and self._cursor:
+                self._cursor.close()
+            if hasattr(self, "_conn") and self._conn:
+                self._conn.close()
+        except Exception as e:
+            logger.debug(f"Error closing tool registry db: {e}")
+
     def call(self, tool_name: str, graph: ClaimGraph, **kwargs) -> Dict[str, Any]:
         # Keyed by tool + root claim + graph state hash — fixes stale-result bug where
         # all steps in the same episode shared the same cache key (old: step always = 0)

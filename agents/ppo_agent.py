@@ -113,9 +113,7 @@ class PPOAgent:
 
     def act(self, obs: np.ndarray, deterministic: bool = False) -> Tuple[int, float, float]:
         """Returns (action, log_prob, value)."""
-        if isinstance(self.policy, MLPPolicy):
-            return self.policy.get_action(obs, deterministic=deterministic)
-        # GATPolicy requires graph data — fallback to MLP mode
+        # Both MLPPolicy and GATPolicy dynamically handle flat obs (GAT falls back to a 0-node graph inside)
         return self.policy.get_action(obs, deterministic=deterministic)
 
     # ── Training ──────────────────────────────────────────────────────────────
@@ -131,7 +129,9 @@ class PPOAgent:
             next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
 
-            self.buffer.add(obs, action, reward, value, log_prob, done)
+            # FIXED: Only store 'terminated' as the done flag for GAE.
+            # Truncated states are NOT terminal, so we must bootstrap their value.
+            self.buffer.add(obs, action, reward, value, log_prob, terminated)
             self.total_steps += 1
             ep_reward += reward
             obs = next_obs
@@ -219,7 +219,9 @@ class PPOAgent:
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self, path: str) -> None:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        parent = os.path.dirname(path)
+        if parent:  # FIXED: dirname("") → "" which causes makedirs to raise FileNotFoundError
+            os.makedirs(parent, exist_ok=True)
         torch.save({
             "policy_state":    self.policy.state_dict(),
             "optimizer_state": self.optimizer.state_dict(),

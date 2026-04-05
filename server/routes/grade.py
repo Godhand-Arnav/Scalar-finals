@@ -14,6 +14,24 @@ router = APIRouter()
 GRADE_LOG: List[dict] = []
 
 
+# FIXED: /grades/summary must be registered BEFORE /{episode_id}/grade to prevent
+# FastAPI's dynamic route from capturing "grades" as episode_id instead of routing
+# to this fixed-path handler.
+@router.get("/grades/summary", tags=["Grading"])
+async def grade_summary():
+    """Aggregate grade statistics across all completed episodes."""
+    if not GRADE_LOG:
+        return {"episodes": 0, "message": "No graded episodes yet."}
+    n     = len(GRADE_LOG)
+    acc   = sum(g["correct"] for g in GRADE_LOG) / n
+    r_avg = sum(g["total_reward"] for g in GRADE_LOG) / n
+    return {
+        "total_episodes":  n,
+        "overall_accuracy": round(acc, 4),
+        "mean_reward":     round(r_avg, 4),
+    }
+
+
 @router.get("/{episode_id}/grade", response_model=GradeResponse)
 async def get_grade(episode_id: str):
     """
@@ -89,18 +107,3 @@ async def get_grade(episode_id: str):
     })
 
     return grade
-
-
-@router.get("/grades/summary", tags=["Grading"])
-async def grade_summary():
-    """Aggregate grade statistics across all completed episodes."""
-    if not GRADE_LOG:
-        return {"episodes": 0, "message": "No graded episodes yet."}
-    n     = len(GRADE_LOG)
-    acc   = sum(g["correct"] for g in GRADE_LOG) / n
-    r_avg = sum(g["total_reward"] for g in GRADE_LOG) / n
-    return {
-        "total_episodes":  n,
-        "overall_accuracy": round(acc, 4),
-        "mean_reward":     round(r_avg, 4),
-    }

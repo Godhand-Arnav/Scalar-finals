@@ -26,17 +26,18 @@ class EntityLinkTool:
         verified = []
 
         for entity in found_entities[:3]:
+            entity_name = entity["entity"]  # FIXED: entity is a dict; extract the string label
             try:
-                wd_result = await self._wikidata_entity_search(entity)
+                wd_result = await self._wikidata_entity_search(entity_name)  # FIXED: pass string not dict
                 if wd_result:
                     verified.append({
-                        "entity": entity,
+                        "entity": entity_name,  # FIXED: store the string, not the dict
                         "wikidata_id": wd_result.get("id"),
                         "description": wd_result.get("description", "")[:100],
                         "verified": True,
                     })
             except Exception as e:
-                logger.debug("EntityLink error for %s: %s", entity, e)
+                logger.debug("EntityLink error for %s: %s", entity_name, e)
 
         # Did the claim misattribute to a real institution?
         misattribution_detected = any(
