@@ -92,13 +92,15 @@ Run `python inference.py --episodes 2` to reproduce offline results (no API key 
 
 | Task | Heuristic Accuracy | Heuristic Reward | Expected LLM Accuracy | Offline Support |
 |------|--------------------|------------------|-----------------------|-----------------|
-| `fabricated_stats` | 0% | 0.26 | ~70% |
-| `out_of_context` | 0% | 0.43 | ~65% |
-| `coordinated_campaign` | 100% | 0.99 | ~85% |
-| `politifact_liar` | 0% | 0.11 | ~60% |
-| `image_forensics` | 0% | 0.26 | ~75% |
-| `sec_fraud` | 0% | 0.41 | ~68% | 
-| **Heuristic Baseline** | **16.7%** | **0.41** | — |
+| `fabricated_stats` | 0% | 0.26 | ~70% | Yes |
+| `out_of_context` | 0% | 0.43 | ~65% | Yes |
+| `coordinated_campaign` | 100% | 0.99 | ~85% | Yes |
+| `politifact_liar` | 0% | 0.11 | ~60% | Yes |
+| `image_forensics` | 0% | 0.26 | ~75% | No |
+| `sec_fraud` | 0% | 0.41 | ~68% | Yes | 
+| `verified_fact` | 0% | 0.50 | ~80% | Yes |
+| `satire_news` | 0% | 0.25 | ~65% | Yes |
+| **Heuristic Baseline** | **12.5%** | **0.40** | — | — |
 
 *All rewards clamped to [0.0, 1.0] per OpenEnv spec. Partial credit (0.5) is awarded when the agent correctly identifies the macro-category (fake vs real) but misclassifies the sub-type.*
 
