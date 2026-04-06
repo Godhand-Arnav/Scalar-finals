@@ -38,6 +38,25 @@ _CAMPAIGN_TEMPLATES = [
     },
 ]
 
+_TRUE_CAMPAIGNS = [
+    {
+        "narrative": "Grassroots fundraising campaign for disaster relief.",
+        "root_text": "Please share: community center completely destroyed by storm. Help us rebuild locally.",
+        "tactics": [],
+        "organic_domains": ["localcommunityforum.org", "neighborhoodwatch.net", "townupdates.com"],
+        "debunk_domain": "factcheck.org",  # Used for confirming rather than debunking
+        "real_source": "redcross.org",
+    },
+    {
+        "narrative": "Organic protest movement gaining extreme momentum across cities.",
+        "root_text": "Thousands are marching downtown right now demanding urgent policy changes!",
+        "tactics": [],
+        "organic_domains": ["activistnetwork.org", "studentpost.edu", "citygazette.com"],
+        "debunk_domain": "reuters.com",
+        "real_source": "apnews.com",
+    },
+]
+
 
 class CoordinatedCampaignTask(BaseTask):
     task_id = "coordinated_campaign"
@@ -48,7 +67,20 @@ class CoordinatedCampaignTask(BaseTask):
 
     def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
         rng = random.Random(seed)
-        template = rng.choice(_CAMPAIGN_TEMPLATES)
+        is_true = rng.random() > 0.5
+        
+        if is_true:
+            template = rng.choice(_TRUE_CAMPAIGNS)
+            domains = template["organic_domains"]
+            trust_score = 0.5
+            true_label = "real"
+            edge_rel = "supports"
+        else:
+            template = rng.choice(_CAMPAIGN_TEMPLATES)
+            domains = template["bot_domains"]
+            trust_score = 0.1
+            true_label = "misinfo"
+            edge_rel = "contradicts"
 
         graph_id = str(uuid.uuid4())
         root_id = "node_root"
@@ -57,45 +89,52 @@ class CoordinatedCampaignTask(BaseTask):
         root = ClaimNode(
             node_id=root_id,
             text=template["root_text"],
-            source_url=f"https://{template['bot_domains'][0]}/breaking-{rng.randint(1000,9999)}",
-            domain=template["bot_domains"][0],
+            source_url=f"https://{domains[0]}/breaking-{rng.randint(1000,9999)}",
+            domain=domains[0],
             timestamp=now - timedelta(hours=rng.randint(1, 12)),
             virality_score=rng.uniform(0.7, 0.99),
-            trust_score=0.1,
-            metadata={"is_bot_origin": True, "campaign": template["narrative"]},
+            trust_score=trust_score,
+            metadata={"is_bot_origin": not is_true, "campaign": template["narrative"]},
         )
 
         graph = ClaimGraph(
             graph_id=graph_id,
             root_claim_id=root_id,
-            true_label="misinfo",
+            true_label=true_label,
             difficulty=difficulty,
             applied_tactics=list(template["tactics"]),
         )
         graph.add_node(root)
 
-        # ── Bot amplifier nodes (same narrative, different domains) ────────────
+        # ── Amplifiers (bots vs real humans) ────────────
         num_bots = 2 + difficulty   # scales with difficulty
         bot_ids = []
         for i in range(num_bots):
-            bot_domain = template["bot_domains"][i % len(template["bot_domains"])]
-            bot_id = f"node_bot_{i}"
+            domain = domains[i % len(domains)]
+            node_prefix = "user" if is_true else "bot"
+            bot_id = f"node_{node_prefix}_{i}"
+            
+            if is_true:
+                text = f"Spreading the word: {template['root_text']} [via genuine account]"
+            else:
+                text = f"SHARE THIS: {template['root_text']} [account #{rng.randint(1000,9999)}]"
+            
             bot = ClaimNode(
                 node_id=bot_id,
-                text=f"SHARE THIS: {template['root_text']} [account #{rng.randint(1000,9999)}]",
-                source_url=f"https://{bot_domain}/post-{rng.randint(10000,99999)}",
-                domain=bot_domain,
+                text=text,
+                source_url=f"https://{domain}/post-{rng.randint(10000,99999)}",
+                domain=domain,
                 timestamp=now - timedelta(minutes=rng.randint(5, 120)),
                 virality_score=rng.uniform(0.4, 0.8),
-                trust_score=0.05,
-                metadata={"is_bot": True, "bot_index": i},
+                trust_score=0.4 if is_true else 0.05,
+                metadata={"is_bot": not is_true, "index": i},
             )
             graph.add_node(bot)
             graph.add_edge(EvidenceEdge(
-                edge_id=f"e_bot_{i}", src_id=root_id, tgt_id=bot_id,
+                edge_id=f"e_{node_prefix}_{i}", src_id=root_id, tgt_id=bot_id,
                 relation="amplifies", weight=rng.uniform(0.8, 1.0),
             ))
-            # Bots also co-share with each other (network)
+            # Co-share network
             if i > 0:
                 graph.add_edge(EvidenceEdge(
                     edge_id=f"e_cross_{i}", src_id=bot_id, tgt_id=f"node_bot_{i-1}",
@@ -103,11 +142,16 @@ class CoordinatedCampaignTask(BaseTask):
                 ))
             bot_ids.append(bot_id)
 
-        # ── Real authoritative counter-source ──────────────────────────────────
+        # ── Real authoritative source ──────────────────────────────────
         auth_id = "node_authority"
+        if is_true:
+            auth_text = f"Official statement from {template['real_source']}: confirmed ongoing efforts and situation."
+        else:
+            auth_text = f"Official statement from {template['real_source']}: no basis for circulating claims."
+            
         auth = ClaimNode(
             node_id=auth_id,
-            text=f"Official statement from {template['real_source']}: no basis for circulating claims.",
+            text=auth_text,
             source_url=f"https://{template['real_source']}/official-statement",
             domain=template["real_source"],
             timestamp=now - timedelta(days=rng.randint(1, 5)),
@@ -117,28 +161,29 @@ class CoordinatedCampaignTask(BaseTask):
         graph.add_node(auth)
         graph.add_edge(EvidenceEdge(
             edge_id="e_auth", src_id=root_id, tgt_id=auth_id,
-            relation="contradicts", weight=0.98,
+            relation=edge_rel, weight=0.98,
         ))
 
-        # ── Fact-check node ────────────────────────────────────────────────────
-        fc_id = "node_factcheck"
-        fc = ClaimNode(
-            node_id=fc_id,
-            text=f"Coordinated campaign detected — {template['narrative']}",
-            source_url=f"https://{template['debunk_domain']}/campaign-analysis",
-            domain=template["debunk_domain"],
-            timestamp=now - timedelta(hours=rng.randint(6, 48)),
-            virality_score=0.25,
-            trust_score=0.92,
-        )
-        graph.add_node(fc)
-        graph.add_edge(EvidenceEdge(
-            edge_id="e_fc", src_id=fc_id, tgt_id=root_id,
-            relation="debunks", weight=0.97,
-        ))
+        # ── Fact-check node (only if false) ────────────────────────────────────────────────────
+        if not is_true:
+            fc_id = "node_factcheck"
+            fc = ClaimNode(
+                node_id=fc_id,
+                text=f"Coordinated campaign detected — {template['narrative']}",
+                source_url=f"https://{template['debunk_domain']}/campaign-analysis",
+                domain=template['debunk_domain'],
+                timestamp=now - timedelta(hours=rng.randint(6, 48)),
+                virality_score=0.25,
+                trust_score=0.92,
+            )
+            graph.add_node(fc)
+            graph.add_edge(EvidenceEdge(
+                edge_id="e_fc", src_id=fc_id, tgt_id=root_id,
+                relation="debunks", weight=0.97,
+            ))
 
         # ── Difficulty 4: add a realistic-looking "supporting" source ──────────
-        if difficulty >= 4:
+        if not is_true and difficulty >= 4:
             legit_id = "node_legit_misquote"
             legit = ClaimNode(
                 node_id=legit_id,
@@ -159,8 +204,7 @@ class CoordinatedCampaignTask(BaseTask):
         return graph
 
     def oracle_steps(self, graph: ClaimGraph) -> int:
-        # need to trace at least 2 bot nodes + authority + factcheck + submit
-        return 4 + graph.difficulty
+        return 4 + (graph.difficulty - 1)
 
     def has_manipulation(self, graph: ClaimGraph) -> bool:
-        return True
+        return graph.true_label == "misinfo"

@@ -59,6 +59,19 @@ _DEBUNKING_DOMAINS = [
     "fullfact.org", "africacheck.org",
 ]
 
+_TRUE_CLAIMS = [
+    {
+        "text": "A new WHO study found that daily exercise reduces cardiovascular disease risk by 30%.",
+        "correct_stat": "Confirmed by multiple longitudinal studies.",
+        "real_domain": "who.int",
+    },
+    {
+        "text": "CDC reports that the seasonal flu vaccine prevents millions of illnesses each year.",
+        "correct_stat": "Matches official CDC flu burden estimates.",
+        "real_domain": "cdc.gov",
+    },
+]
+
 
 class FabricatedStatsTask(BaseTask):
     task_id = "fabricated_stats"
@@ -69,36 +82,56 @@ class FabricatedStatsTask(BaseTask):
 
     def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
         rng = random.Random(seed)
-        template = rng.choice(_FABRICATED_CLAIMS)
-
+        is_true = rng.random() > 0.5
+        
+        if is_true:
+            template = rng.choice(_TRUE_CLAIMS)
+            domain = template["real_domain"]
+            trust_score = 0.95
+            true_label = "real"
+            edge_rel = "supports"
+            applied_tactics = []
+        else:
+            template = rng.choice(_FABRICATED_CLAIMS)
+            domain = template["fake_domain"]
+            trust_score = 0.2
+            true_label = "fabricated"
+            edge_rel = "contradicts"
+            applied_tactics = [template["tactic"]]
+            
         graph_id = str(uuid.uuid4())
         root_id = "node_root"
 
-        # ── Root node (the false claim) ────────────────────────────────────────
+        # ── Root node ────────────────────────────────────────
         root = ClaimNode(
             node_id=root_id,
             text=template["text"],
-            source_url=f"https://{template['fake_domain']}/article-{rng.randint(1000,9999)}",
-            domain=template["fake_domain"],
+            source_url=f"https://{domain}/article-{rng.randint(1000,9999)}",
+            domain=domain,
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 30)),
             virality_score=rng.uniform(0.6, 0.95),
-            trust_score=0.2,
+            trust_score=trust_score,
         )
 
         graph = ClaimGraph(
             graph_id=graph_id,
             root_claim_id=root_id,
-            true_label="fabricated",
+            true_label=true_label,
             difficulty=difficulty,
-            applied_tactics=[template["tactic"]],
+            applied_tactics=applied_tactics,
         )
         graph.add_node(root)
 
-        # ── Authoritative source node (real institution, says opposite) ─────────
+        # ── Authoritative source node ─────────
         auth_id = "node_authority"
+        if is_true:
+            auth_text = f"Official page of {template['real_domain']} — confirming research findings: {template['correct_stat']}"
+        else:
+            auth_text = f"Official page of {template['real_domain']} — no such study found."
+            
         auth = ClaimNode(
             node_id=auth_id,
-            text=f"Official page of {template['real_domain']} — no such study found.",
+            text=auth_text,
             source_url=f"https://{template['real_domain']}/research/",
             domain=template["real_domain"],
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(60, 365)),
@@ -108,26 +141,27 @@ class FabricatedStatsTask(BaseTask):
         graph.add_node(auth)
         graph.add_edge(EvidenceEdge(
             edge_id="e1", src_id=root_id, tgt_id=auth_id,
-            relation="contradicts", weight=0.9,
+            relation=edge_rel, weight=0.9,
         ))
 
-        # ── Debunking node ─────────────────────────────────────────────────────
-        deb_domain = rng.choice(_DEBUNKING_DOMAINS)
-        deb_id = "node_debunk"
-        deb = ClaimNode(
-            node_id=deb_id,
-            text=f"FACT CHECK FALSE: {template['correct_stat']}",
-            source_url=f"https://{deb_domain}/fact-check/{rng.randint(10000,99999)}",
-            domain=deb_domain,
-            timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 10)),
-            virality_score=0.3,
-            trust_score=0.90,
-        )
-        graph.add_node(deb)
-        graph.add_edge(EvidenceEdge(
-            edge_id="e2", src_id=deb_id, tgt_id=root_id,
-            relation="debunks", weight=0.95,
-        ))
+        # ── Debunking node (only for false) ─────────────────────────────────────────────────────
+        if not is_true:
+            deb_domain = rng.choice(_DEBUNKING_DOMAINS)
+            deb_id = "node_debunk"
+            deb = ClaimNode(
+                node_id=deb_id,
+                text=f"FACT CHECK FALSE: {template['correct_stat']}",
+                source_url=f"https://{deb_domain}/fact-check/{rng.randint(10000,99999)}",
+                domain=deb_domain,
+                timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 10)),
+                virality_score=0.3,
+                trust_score=0.90,
+            )
+            graph.add_node(deb)
+            graph.add_edge(EvidenceEdge(
+                edge_id="e2", src_id=deb_id, tgt_id=root_id,
+                relation="debunks", weight=0.95,
+            ))
 
         # ── Difficulty scaling: add noisy amplifier nodes ──────────────────────
         for i in range(difficulty - 1):
@@ -148,17 +182,16 @@ class FabricatedStatsTask(BaseTask):
                 relation="cites", weight=rng.uniform(0.3, 0.6),
             ))
 
-        # Add extra tactic for difficulty >= 3
-        if difficulty >= 3:
-            graph.applied_tactics.append("misattribute_quote")
-        if difficulty >= 4:
-            graph.applied_tactics.append("cherry_pick_study")
+        if not is_true:
+            if difficulty >= 3:
+                graph.applied_tactics.append("misattribute_quote")
+            if difficulty >= 4:
+                graph.applied_tactics.append("cherry_pick_study")
 
         return graph
 
     def oracle_steps(self, graph: ClaimGraph) -> int:
-        # Minimum: query root source + trace authority + cross-ref debunk + submit
         return 3 + (graph.difficulty - 1)
 
     def has_manipulation(self, graph: ClaimGraph) -> bool:
-        return True
+        return graph.true_label == "fabricated"

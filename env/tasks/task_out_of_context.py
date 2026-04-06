@@ -46,6 +46,23 @@ _OOC_CLAIMS = [
     },
 ]
 
+_TRUE_CLAIMS = [
+    {
+        "modern_text": "Live coverage: Massive fire breaks out in downtown warehouse district today.",
+        "context": "Confirmed by local authorities and multiple live news streams today.",
+        "origin_year": datetime.today().year,
+        "origin_domain": "localnews.com",
+        "misuse_domain": "breakingnewsalert24.com",
+    },
+    {
+        "modern_text": "Hospital officially reaches full capacity following recent health crisis.",
+        "context": "Confirmed by hospital administrative statements this week.",
+        "origin_year": datetime.today().year,
+        "origin_domain": "reuters.com",
+        "misuse_domain": "healthalert.org",
+    },
+]
+
 
 class OutOfContextTask(BaseTask):
     task_id = "out_of_context"
@@ -56,7 +73,20 @@ class OutOfContextTask(BaseTask):
 
     def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
         rng = random.Random(seed)
-        template = rng.choice(_OOC_CLAIMS)
+        is_true = rng.random() > 0.5
+        
+        if is_true:
+            template = rng.choice(_TRUE_CLAIMS)
+            true_label = "real"
+            edge_rel = "supports"
+            applied_tactics = []
+            trust_score = 0.8
+        else:
+            template = rng.choice(_OOC_CLAIMS)
+            true_label = "out_of_context"
+            edge_rel = "contradicts"
+            applied_tactics = list(template["tactics"])
+            trust_score = 0.15
 
         graph_id = str(uuid.uuid4())
         root_id = "node_root"
@@ -69,21 +99,25 @@ class OutOfContextTask(BaseTask):
             domain=template["misuse_domain"],
             timestamp=now - timedelta(days=rng.randint(1, 7)),
             virality_score=rng.uniform(0.5, 0.9),
-            trust_score=0.15,
+            trust_score=trust_score,
             metadata={"claimed_date": str(now.date())},
         )
 
         graph = ClaimGraph(
             graph_id=graph_id,
             root_claim_id=root_id,
-            true_label="out_of_context",
+            true_label=true_label,
             difficulty=difficulty,
-            applied_tactics=list(template["tactics"]),
+            applied_tactics=applied_tactics,
         )
         graph.add_node(root)
 
-        # ── Original source node (from origin year) ────────────────────────────
-        origin_date = datetime(template["origin_year"], rng.randint(1, 12), rng.randint(1, 28))
+        # ── Original source node ────────────────────────────
+        if is_true:
+            origin_date = now - timedelta(days=rng.randint(1, 3))
+        else:
+            origin_date = datetime(template["origin_year"], rng.randint(1, 12), rng.randint(1, 28))
+            
         orig_id = "node_origin"
         orig = ClaimNode(
             node_id=orig_id,
@@ -98,7 +132,7 @@ class OutOfContextTask(BaseTask):
         graph.add_node(orig)
         graph.add_edge(EvidenceEdge(
             edge_id="e_origin", src_id=root_id, tgt_id=orig_id,
-            relation="contradicts", weight=0.95,
+            relation=edge_rel, weight=0.95,
         ))
 
         # ── Propagation chain (amplifier nodes) ────────────────────────────────
@@ -122,13 +156,13 @@ class OutOfContextTask(BaseTask):
             ))
             prev_id = amp_id
 
-        if difficulty >= 3:
+        if not is_true and difficulty >= 3:
             graph.applied_tactics.append("translate_without_context")
 
         return graph
 
     def oracle_steps(self, graph: ClaimGraph) -> int:
-        return 3 + graph.difficulty
+        return 3 + (graph.difficulty - 1)
 
     def has_manipulation(self, graph: ClaimGraph) -> bool:
-        return True
+        return graph.true_label == "out_of_context"

@@ -64,6 +64,23 @@ _SEC_SCENARIOS = [
     },
 ]
 
+_TRUE_SEC_SCENARIOS = [
+    {
+        "company": "SecureCloud Networks",
+        "ticker": "SCLN",
+        "ceo_statement": "We successfully closed the strategic acquisition of DataFortress for $1.2B in cash.",
+        "sec_reality": "8-K filing confirms the acquisition closure and $1.2B cash transaction details.",
+        "filing_type": "8-K",
+    },
+    {
+        "company": "Quantum Materials",
+        "ticker": "QMAT",
+        "ceo_statement": "Our Q3 revenue met expectations at $210M, showing steady operational growth.",
+        "sec_reality": "10-Q filing matches statement, reporting exactly $210.4M in Q3 revenue.",
+        "filing_type": "10-Q",
+    },
+]
+
 _FINANCIAL_MEDIA_DOMAINS = [
     "marketwatch.com", "bloomberg.com", "wsj.com",
     "ft.com", "reuters.com", "cnbc.com",
@@ -91,12 +108,23 @@ class SECFraudTask(BaseTask):
 
     def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
         rng = random.Random(seed)
-        scenario = rng.choice(_SEC_SCENARIOS)
+        is_true = rng.random() > 0.5
+        
+        if is_true:
+            scenario = rng.choice(_TRUE_SEC_SCENARIOS)
+            mismatch = "none"
+            true_label = "real"
+            edge_rel = "supports"
+        else:
+            scenario = rng.choice(_SEC_SCENARIOS)
+            mismatch = scenario["mismatch_severity"]
+            true_label = "fabricated"
+            edge_rel = "contradicts"
 
         graph_id = str(uuid.uuid4())
         root_id  = "node_root"
 
-        # ── Root node: CEO's public statement (the false claim) ───────────────
+        # ── Root node: CEO's public statement ───────────────
         pub_domain = f"ir.{scenario['company'].lower().replace(' ', '').replace('.', '')}.com"
         root = ClaimNode(
             node_id=root_id,
@@ -109,12 +137,12 @@ class SECFraudTask(BaseTask):
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 30)),
             author=f"CEO of {scenario['company']}",
             virality_score=rng.uniform(0.5, 0.85),
-            trust_score=0.6,   # Corporate IR sites are semi-trusted
+            trust_score=0.9 if is_true else 0.6,
             metadata={
                 "company":        scenario["company"],
                 "ticker":         scenario["ticker"],
                 "filing_type":    scenario["filing_type"],
-                "mismatch":       scenario["mismatch_severity"],
+                "mismatch":       mismatch,
                 "forensics_domain": "financial",
             },
         )
@@ -122,9 +150,9 @@ class SECFraudTask(BaseTask):
         graph = ClaimGraph(
             graph_id=graph_id,
             root_claim_id=root_id,
-            true_label="fabricated",
+            true_label=true_label,
             difficulty=difficulty,
-            applied_tactics=["fabricate_statistic", "misattribute_quote"],
+            applied_tactics=[] if is_true else ["fabricate_statistic", "misattribute_quote"],
         )
         graph.add_node(root)
 
@@ -149,18 +177,26 @@ class SECFraudTask(BaseTask):
         graph.add_node(sec)
         graph.add_edge(EvidenceEdge(
             edge_id="e_sec", src_id=sec_id, tgt_id=root_id,
-            relation="contradicts", weight=0.99,
+            relation=edge_rel, weight=0.99,
         ))
 
         # ── Financial media coverage node ─────────────────────────────────────
         media_domain = rng.choice(_FINANCIAL_MEDIA_DOMAINS)
         media_id = "node_media"
-        media = ClaimNode(
-            node_id=media_id,
-            text=(
+        if is_true:
+            media_text = (
+                f"Analysis: {scenario['company']} CEO statements confirmed. "
+                f"Analysts note perfect alignment between press release and {scenario['filing_type']} filing."
+            )
+        else:
+            media_text = (
                 f"Analysis: {scenario['company']} CEO statements raise red flags. "
                 f"Analysts note discrepancy between press release and {scenario['filing_type']} filing."
-            ),
+            )
+            
+        media = ClaimNode(
+            node_id=media_id,
+            text=media_text,
             source_url=f"https://{media_domain}/article/{scenario['ticker']}/analysis-{seed}",
             domain=media_domain,
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 7)),
@@ -170,11 +206,11 @@ class SECFraudTask(BaseTask):
         graph.add_node(media)
         graph.add_edge(EvidenceEdge(
             edge_id="e_media", src_id=media_id, tgt_id=root_id,
-            relation="contradicts", weight=0.75,
+            relation=edge_rel, weight=0.75,
         ))
 
-        # ── Difficulty: add regulatory investigation node ─────────────────────
-        if difficulty >= 2:
+        # ── Difficulty: add regulatory investigation node (only if false) ─────────────────────
+        if not is_true and difficulty >= 2:
             reg_domain = rng.choice(_REGULATOR_DOMAINS)
             reg_id = "node_regulator"
             reg = ClaimNode(
@@ -203,8 +239,7 @@ class SECFraudTask(BaseTask):
         return graph
 
     def oracle_steps(self, graph: ClaimGraph) -> int:
-        # Minimum: query_source (IR site) + cross_reference (SEC filing) + submit
-        return 2 + graph.difficulty
+        return 2 + (graph.difficulty - 1)
 
     def has_manipulation(self, graph: ClaimGraph) -> bool:
-        return True   # SEC misrepresentation = deliberate material manipulation
+        return graph.true_label == "fabricated"

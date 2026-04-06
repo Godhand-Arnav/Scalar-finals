@@ -31,6 +31,18 @@ _SATIRE_CLAIMS = [
     },
 ]
 
+
+_TRUE_BIZARRE_CLAIMS = [
+    {
+        "text": "Florida Man Arrested After Trying To Pay For Fast Food With A Live Alligator.",
+        "authoritative_domain": "apnews.com",
+    },
+    {
+        "text": "California Town Elects Golden Retriever Dog As Mayor For Fourth Consecutive Term.",
+        "authoritative_domain": "reuters.com",
+    },
+]
+
 _MISUNDERSTANDING_DOMAINS = [
     "angrycitizenforum.net", "truthpatriots1776.com", "outrage-daily.org"
 ]
@@ -45,33 +57,48 @@ class SatiricalClaimTask(BaseTask):
 
     def generate(self, difficulty: int = 1, seed: int = 0) -> ClaimGraph:
         rng = random.Random(seed)
-        template = rng.choice(_SATIRE_CLAIMS)
+        is_true = rng.random() > 0.5
+        
+        if is_true:
+            template = rng.choice(_TRUE_BIZARRE_CLAIMS)
+            true_label = "real"
+            edge_rel = "supports"
+        else:
+            template = rng.choice(_SATIRE_CLAIMS)
+            true_label = "satire"
+            edge_rel = "misinterprets"
 
         graph_id = str(uuid.uuid4())
         root_id = "node_root"
 
-        # —— Root node (the satire taken completely literally by an angry forum)
+        # —— Root node
         fake_outrage_domain = rng.choice(_MISUNDERSTANDING_DOMAINS)
+        
+        if is_true:
+            root_text = f"Can't make this up! {template['text']}"
+        else:
+            root_text = f"UNBELIEVABLE: {template['text']} This is what our world has come to!!"
+            
         root = ClaimNode(
             node_id=root_id,
-            text=f"UNBELIEVABLE: {template['text']} This is what our world has come to!!",
+            text=root_text,
             source_url=f"https://{fake_outrage_domain}/post/{rng.randint(1000,9999)}",
             domain=fake_outrage_domain,
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(1, 10)),
             virality_score=rng.uniform(0.7, 0.95),
-            trust_score=0.1,
+            trust_score=0.6 if is_true else 0.1,
         )
 
         graph = ClaimGraph(
             graph_id=graph_id,
             root_claim_id=root_id,
-            true_label="satire",
+            true_label=true_label,
             difficulty=difficulty,
-            applied_tactics=["parody_taken_literally"],
+            applied_tactics=[] if is_true else ["parody_taken_literally"],
         )
         graph.add_node(root)
 
-        # —— The original Satire Node
+        # —— The original Source Node
         satire_id = "node_satire_origin"
         satire = ClaimNode(
             node_id=satire_id,
@@ -80,12 +107,12 @@ class SatiricalClaimTask(BaseTask):
             domain=template["authoritative_domain"],
             timestamp=datetime.utcnow() - timedelta(days=rng.randint(20, 60)),
             virality_score=0.9,
-            trust_score=0.8, # Trusted *as satire*
+            trust_score=0.95 if is_true else 0.8,
         )
         graph.add_node(satire)
         graph.add_edge(EvidenceEdge(
             edge_id="e_satire_origin", src_id=root_id, tgt_id=satire_id,
-            relation="misinterprets", weight=0.99,
+            relation=edge_rel, weight=0.99,
         ))
 
         # —— Additional angry amplifiers (if difficulty > 1)
@@ -113,5 +140,4 @@ class SatiricalClaimTask(BaseTask):
         return 2 + (graph.difficulty - 1)
 
     def has_manipulation(self, graph: ClaimGraph) -> bool:
-        # Satire itself isn't malicious manipulation, but taking it out of context is often a tactic
-        return True
+        return graph.true_label == "satire"
