@@ -62,7 +62,7 @@ pip install -r requirements.txt
 **2. Baseline Evaluation**
 The inference script iteratively spawns the ReAct++ local LLMAgent against 2 episodes of every primary task to compute the reproducible leaderboard stats.
 ```bash
-python scripts/inference.py
+python inference.py
 ```
 
 **3. Launch the OpenEnv API Server & Visualizer**
@@ -73,7 +73,7 @@ Open `frontend/visualizer.html` in your browser to watch the RL agents graphical
 
 ## 📊 Baseline Scores (LLM Hybrid — Groq Free-Tier)
 
-Run `python scripts/inference.py --episodes 2` to reproduce results.
+Run `python inference.py --episodes 2` to reproduce results.
 
 | Task | Accuracy | Mean Reward | Agent | Offline Grading |
 |------|----------|-------------|-------|-----------------|

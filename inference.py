@@ -12,6 +12,8 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 # Root is the directory containing this file (project root)
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -81,7 +83,6 @@ def run_evaluation(n_episodes_per_task: int = 2, difficulty: int = 1):
             correct    = (verdict == true_label)
             
             # Emit clamped reward allowing it to strictly conform to grader 0.0-1.0 limits
-            import numpy as np
             final_reward = float(np.clip(ep_reward, 0.0, 1.0))
 
             # [END] emit

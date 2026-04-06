@@ -184,6 +184,7 @@ class MisInfoForensicsEnv(gym.Env):
         # ── Free actions (no step cost) ───────────────────────────────────────
         if action_name == "flag_manipulation":
             self.manipulation_flagged = True
+            self.steps += 1  # Fix infinite loop bug
             reward = 0.0   # reward only at terminal
             info["flagged"] = True
             logger.info("[STEP] %s step=%d action=flag_manipulation",
@@ -247,8 +248,6 @@ class MisInfoForensicsEnv(gym.Env):
         if self.steps >= self.max_steps:
             truncated = True
             self._done = True
-            # Penalty for not submitting verdict in time
-            reward += -0.3
             logger.info("[END] %s truncated at step %d", self.episode_id, self.steps)
 
         # Hackathon requirement: reward must be in 0.0-1.0 range

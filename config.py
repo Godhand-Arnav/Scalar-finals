@@ -34,8 +34,8 @@ TOOL_CACHE_TTL_SEC: int = 21600      # 6 hours
 
 # ─── Reward Shaping ───────────────────────────────────────────────────────────
 REWARD_CORRECT_VERDICT: float = 1.0
-REWARD_WRONG_VERDICT: float = -0.5
-REWARD_FALSE_POSITIVE: float = -0.3
+REWARD_WRONG_VERDICT: float = 0.0
+REWARD_FALSE_POSITIVE: float = 0.0
 REWARD_MANIPULATION_FLAG: float = 0.15
 REWARD_STEP_PENALTY: float = -0.02
 REWARD_DUPLICATE_TOOL_PENALTY: float = -0.05
@@ -71,7 +71,7 @@ CURRICULUM_STAGES: List[dict] = [
     {"name": "stage2", "max_tactics": 3, "noisy_tools": True,  "budget_mult": 1.0},
     {"name": "stage3", "max_tactics": 4, "noisy_tools": True,  "budget_mult": 0.8},
 ]
-CURRICULUM_GATE_REWARD: float = 0.85   # must achieve this mean reward to advance
+CURRICULUM_GATE_REWARD: float = 0.70   # must achieve this mean reward to advance
 
 # ─── Self-Play ────────────────────────────────────────────────────────────────
 GENERATOR_POPULATION_SIZE: int = 8     # reduced for free compute

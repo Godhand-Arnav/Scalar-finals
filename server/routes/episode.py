@@ -31,7 +31,7 @@ async def reset_env(req: ResetRequest):
         # Max-size eviction to prevent memory leak on long-running servers.
         # In production, replace EPISODE_STORE with Redis (see server/state.py).
         MAX_EPISODES = 500
-        non_meta_keys = [k for k in EPISODE_STORE if k != "latest"]
+        non_meta_keys = [k for k in EPISODE_STORE if k not in ("latest_id", "latest")]
         if len(non_meta_keys) >= MAX_EPISODES:
             oldest = non_meta_keys[0]   # dict insertion order preserved in Python 3.7+
             del EPISODE_STORE[oldest]
@@ -47,8 +47,8 @@ async def reset_env(req: ResetRequest):
             "done":     False,
         }
         
-        # In strict single-tenant, we cache the most recent
-        EPISODE_STORE["latest"] = EPISODE_STORE[episode_id]
+        # In strict single-tenant, we cache the most recent ID instead of strong reference
+        EPISODE_STORE["latest_id"] = episode_id
 
         return ResetResponse(
             episode_id=episode_id,
@@ -61,8 +61,8 @@ async def reset_env(req: ResetRequest):
 
 @router.get("/state", response_model=StateResponse)
 async def get_state(episode_id: Optional[str] = None):
-    eid = episode_id or "latest"
-    if eid not in EPISODE_STORE:
+    eid = episode_id or EPISODE_STORE.get("latest_id")
+    if not eid or eid not in EPISODE_STORE:
         raise HTTPException(status_code=404, detail="Active episode not found")
     
     record = EPISODE_STORE[eid]

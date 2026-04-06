@@ -12,8 +12,8 @@ router = APIRouter()
 
 @router.post("/step", response_model=StepResponse)
 async def take_step(req: StepRequest):
-    eid = req.episode_id or "latest"
-    if eid not in EPISODE_STORE:
+    eid = req.episode_id or EPISODE_STORE.get("latest_id")
+    if not eid or eid not in EPISODE_STORE:
         raise HTTPException(status_code=404, detail="Active episode not found")
 
     record = EPISODE_STORE[eid]
