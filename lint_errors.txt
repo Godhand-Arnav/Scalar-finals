@@ -1,4 +1,0 @@
-# FORGE Lint Report — All Clear
-# Last checked: 2026-04-07
-# Command: python -m flake8 --select=F401,F841 --max-line-length=120 --exclude=__pycache__,*.pyc .
-# Result: 0 errors

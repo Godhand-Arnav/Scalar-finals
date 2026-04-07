@@ -8,11 +8,46 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 
 from env.misinfo_env import MisInfoForensicsEnv
-from server.schemas import ResetRequest, ResetResponse, StateResponse
+from server.schemas import ResetRequest, ResetResponse, StateResponse, Observation, Action, Reward
 from server.state import EPISODE_STORE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+@router.get("/observations/schema")
+async def observations_schema():
+    return Observation.model_json_schema()
+
+@router.get("/actions/schema")
+async def actions_schema():
+    return Action.model_json_schema()
+
+@router.get("/rewards/schema")
+async def rewards_schema():
+    return Reward.model_json_schema()
+
+@router.get("/tasks")
+async def list_tasks():
+    from env.tasks import TASK_REGISTRY
+    tasks = []
+    difficulty_map = {
+        "fabricated_stats": "easy",
+        "out_of_context": "medium",
+        "coordinated_campaign": "hard",
+        "politifact_liar": "medium",
+        "image_forensics": "hard",
+        "sec_fraud": "hard",
+        "verified_fact": "easy",
+        "satire_news": "medium",
+    }
+    for name in TASK_REGISTRY:
+        tasks.append({
+            "id": name,
+            "difficulty": difficulty_map.get(name, "medium"),
+            "description": TASK_REGISTRY[name].__doc__ or name,
+        })
+    return {"tasks": tasks, "count": len(tasks)}
+
 
 
 @router.post("/reset", response_model=ResetResponse, status_code=200)
@@ -77,9 +112,24 @@ async def get_state(episode_id: Optional[str] = None):
     if env.graph:
         info["graph_summary"] = env.graph.to_dict()
 
+    graph = env.graph
+    typed_obs = Observation(
+        episode_id=eid,
+        vector=record["obs"].tolist(),
+        claim_text=graph.root.text if graph and graph.root else "",
+        evidence_coverage=round(float(graph.evidence_coverage), 4) if graph else 0.0,
+        source_diversity=round(float(graph.source_diversity_entropy), 4) if graph else 0.0,
+        contradiction_count=int(graph.contradiction_surface_area) if graph else 0,
+        manipulation_flagged=bool(env.manipulation_flagged),
+        budget_remaining=round(float(env.budget_remaining / max(env.max_steps, 1)), 4),
+        steps_used=int(env.steps),
+        step=int(env.steps),
+    )
+
     return StateResponse(
         episode_id=eid,
         observation=record["obs"].tolist(),
+        typed_observation=typed_obs,
         done=record["done"],
         total_reward=record["total_reward"],
         info=info,

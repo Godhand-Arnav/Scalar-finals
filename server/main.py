@@ -81,22 +81,13 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health():
         return {
-            "status": "healthy",
-            "active_episodes": len(EPISODE_STORE),
+            "status": "ok",
+            "env": "forge",
             "version": "1.0.0",
-        }
-
-    @app.get("/tasks", tags=["System"])
-    async def list_tasks():
-        from env.tasks import TASK_REGISTRY
-        return {
-            "tasks": [
-                {
-                    "task_id": key,
-                    "description": (cls.__doc__ or "").strip().split("\n")[0] if cls.__doc__ else key
-                }
-                for key, cls in TASK_REGISTRY.items()
-            ]
+            "openenv_compliant": True,
+            "tasks": 8,
+            "action_space": 13,
+            "observation_shape": 3859,
         }
 
     @app.get("/actions", tags=["System"])
