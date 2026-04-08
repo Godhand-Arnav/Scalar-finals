@@ -64,7 +64,7 @@ async def get_grade(episode_id: str):
     coverage = graph.evidence_coverage if graph else 0.0
 
     # Grade breakdown
-    base_score = 1.0 if correct else 0.0
+    base_score = 0.999 if correct else 0.001
     efficiency_score = round(efficiency * 0.2, 4)
     coverage_score = round(coverage * 0.1, 4)
     manip_score = 0.1 if (
@@ -74,7 +74,11 @@ async def get_grade(episode_id: str):
         env.manipulation_flagged and task and not task.has_manipulation(graph)
     ) else 0.0
 
-    total = round(base_score + efficiency_score + coverage_score + manip_score + fp_penalty, 4)
+    import numpy as np
+    total = round(float(np.clip(
+        base_score + efficiency_score + coverage_score + manip_score + fp_penalty,
+        0.001, 0.999
+    )), 4)
 
     grade = GradeResponse(
         episode_id=episode_id,

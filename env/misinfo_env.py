@@ -178,7 +178,7 @@ class MisInfoForensicsEnv(gym.Env):
         action_name = ACTIONS[action]
         prev_graph = copy.deepcopy(self.graph)
 
-        reward = 0.0
+        reward = config.REWARD_CLIP_MIN
         terminated = False
         truncated = False
         info: Dict[str, Any] = {
@@ -190,7 +190,7 @@ class MisInfoForensicsEnv(gym.Env):
         # ── Free actions (no step cost) ───────────────────────────────────────
         if action_name == "flag_manipulation":
             self.manipulation_flagged = True
-            reward = 0.0
+            reward = config.REWARD_CLIP_MIN
             info["flagged"] = True
             logger.info("[STEP] %s step=%d action=flag_manipulation",
                         self.episode_id, self.steps)

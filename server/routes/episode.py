@@ -14,39 +14,20 @@ from server.state import EPISODE_STORE
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.get("/observations/schema")
+@router.get("/observations/schema", tags=["OpenEnv"])
 async def observations_schema():
+    from server.schemas import Observation
     return Observation.model_json_schema()
 
-@router.get("/actions/schema")
+@router.get("/actions/schema", tags=["OpenEnv"])
 async def actions_schema():
+    from server.schemas import Action
     return Action.model_json_schema()
 
-@router.get("/rewards/schema")
+@router.get("/rewards/schema", tags=["OpenEnv"])
 async def rewards_schema():
+    from server.schemas import Reward
     return Reward.model_json_schema()
-
-@router.get("/tasks")
-async def list_tasks():
-    from env.tasks import TASK_REGISTRY
-    tasks = []
-    difficulty_map = {
-        "fabricated_stats": "easy",
-        "out_of_context": "medium",
-        "coordinated_campaign": "hard",
-        "politifact_liar": "medium",
-        "image_forensics": "hard",
-        "sec_fraud": "hard",
-        "verified_fact": "easy",
-        "satire_news": "medium",
-    }
-    for name in TASK_REGISTRY:
-        tasks.append({
-            "id": name,
-            "difficulty": difficulty_map.get(name, "medium"),
-            "description": TASK_REGISTRY[name].__doc__ or name,
-        })
-    return {"tasks": tasks, "count": len(tasks)}
 
 
 
@@ -113,6 +94,7 @@ async def get_state(episode_id: Optional[str] = None):
         info["graph_summary"] = env.graph.to_dict()
 
     graph = env.graph
+    budget_remaining = round(1.0 - (env.steps / max(env.max_steps, 1)), 4)
     typed_obs = Observation(
         episode_id=eid,
         vector=record["obs"].tolist(),
@@ -121,9 +103,8 @@ async def get_state(episode_id: Optional[str] = None):
         source_diversity=round(float(graph.source_diversity_entropy), 4) if graph else 0.0,
         contradiction_count=int(graph.contradiction_surface_area) if graph else 0,
         manipulation_flagged=bool(env.manipulation_flagged),
-        budget_remaining=round(float(env.budget_remaining / max(env.max_steps, 1)), 4),
+        budget_remaining=budget_remaining,
         steps_used=int(env.steps),
-        step=int(env.steps),
     )
 
     return StateResponse(

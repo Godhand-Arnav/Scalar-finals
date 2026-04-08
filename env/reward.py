@@ -46,7 +46,8 @@ def shaped_step_reward(
     negative rewards to reach the agent, so no artificial floor is needed.
     """
     shaping = gamma * compute_potential(curr_graph) - compute_potential(prev_graph)
-    return base_reward + shaping
+    result = base_reward + shaping
+    return float(max(config.REWARD_CLIP_MIN, min(config.REWARD_CLIP_MAX, result)))
 
 
 # ─── Terminal Verdict Reward ──────────────────────────────────────────────────
@@ -100,8 +101,9 @@ def verdict_reward(
         # Penalise false manipulation flags
         manip_reward = config.REWARD_MANIPULATION_PENALTY if manipulation_flagged else 0.0
 
-    total = base + calibration_bonus + efficiency_bonus + manip_reward
-    return round(total, 4)
+    total = round(base + calibration_bonus + efficiency_bonus + manip_reward, 4)
+    # Clip to open interval before returning
+    return float(max(0.001, min(0.999, total)))
 
 
 # ─── Step-level Primitive Rewards ────────────────────────────────────────────
@@ -116,11 +118,12 @@ def tool_call_reward(
     Immediate reward signal for a single tool call (before shaping).
     """
     if is_duplicate_call:
-        return config.REWARD_DUPLICATE_TOOL_PENALTY
+        return float(max(config.REWARD_CLIP_MIN, config.REWARD_DUPLICATE_TOOL_PENALTY))
 
     # Information gain proxy
     info_gain = (new_nodes_discovered * 0.03) + (new_contradictions * 0.05)
-    return config.REWARD_STEP_PENALTY + info_gain   # small negative + info gain
+    result = config.REWARD_STEP_PENALTY + info_gain   # small negative + info gain
+    return float(max(config.REWARD_CLIP_MIN, min(config.REWARD_CLIP_MAX, result)))
 
 
 # ─── Difficulty-Normalised Efficiency Penalty ─────────────────────────────────
@@ -132,4 +135,5 @@ def efficiency_penalty(steps_used: int, difficulty: int) -> float:
     """
     base_budget = config.BASE_EPISODE_STEPS + difficulty * config.STEP_COMPLEXITY_BONUS
     excess = max(0, steps_used - base_budget)
-    return config.REWARD_STEP_PENALTY * excess / max(difficulty, 1)
+    result = config.REWARD_STEP_PENALTY * excess / max(difficulty, 1)
+    return float(max(config.REWARD_CLIP_MIN, min(config.REWARD_CLIP_MAX, result)))

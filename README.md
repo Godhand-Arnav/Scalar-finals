@@ -4,6 +4,8 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
+tags:
+  - openenv
 ---
 
 #  FORGE: Forensic RL Graph Environment
@@ -92,18 +94,21 @@ FORGE uses a **two-tier agent system**:
 ## Baseline scores
 
 | Task | Difficulty | Heuristic (offline) | LLM ReAct (with key) |
-|------|------------|--------------------|-----------------------|
-| `fabricated_stats` | Easy | ~35% | ~70% |
-| `out_of_context` | Medium | ~30% | ~65% |
-| `coordinated_campaign` | Hard | ~40% | ~85% |
-| `politifact_liar` | Medium | ~25% | ~60% |
-| `image_forensics` | Hard | ~20% | ~75% |
-| `sec_fraud` | Hard | ~25% | ~68% |
-| `verified_fact` | Easy | ~45% | ~80% |
-| `satire_news` | Medium | ~30% | ~65% |
+|---|---|---|---|
+| fabricated_stats | Easy | ~35% | ~70% |
+| out_of_context | Medium | ~30% | ~65% |
+| coordinated_campaign | Hard | ~40% | ~85% |
+| politifact_liar | Medium | ~25% | ~60% |
+| image_forensics | Hard | ~20% | ~75% |
+| sec_fraud | Hard | ~25% | ~68% |
+| verified_fact | Easy | ~45% | ~80% |
+| satire_news | Medium | ~30% | ~65% |
 | **Overall** | | **~31%** | **~71%** |
 
-Run offline: `python inference.py --episodes 2`  
-Run with LLM: `HF_TOKEN=your_key python inference.py --episodes 2`
+Run offline (no API key needed):
+  python inference.py --episodes 2
+
+Run with LLM:
+  HF_TOKEN=your_key python inference.py --episodes 2
 
 > **Architecture:** The primary agent is a pure ReAct LLM investigator backed by `tenacity` exponential backoff to handle free-tier rate limits gracefully. A deterministic heuristic fallback engages automatically when the LLM is unavailable, preventing timeouts in grading pipelines. A persistent SQLite caching layer wraps all external HTTP tool calls, ensuring `INTERNET_OFF=true` runs are fully deterministic without API quota failures.

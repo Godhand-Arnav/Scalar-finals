@@ -88,6 +88,28 @@ def create_app() -> FastAPI:
             "tasks": 8,
             "action_space": 13,
             "observation_shape": 3859,
+            "reward_range": [0.001, 0.999],
+        }
+
+    @app.get("/tasks", tags=["System"])
+    async def list_tasks():
+        from env.tasks import TASK_REGISTRY
+        difficulty_map = {
+            "fabricated_stats": "easy", "out_of_context": "medium",
+            "coordinated_campaign": "hard", "politifact_liar": "medium",
+            "image_forensics": "hard", "sec_fraud": "hard",
+            "verified_fact": "easy", "satire_news": "medium",
+        }
+        return {
+            "tasks": [
+                {
+                    "id": name,
+                    "difficulty": difficulty_map.get(name, "medium"),
+                    "reward_range": [0.001, 0.999],
+                }
+                for name in TASK_REGISTRY
+            ],
+            "count": len(TASK_REGISTRY),
         }
 
     @app.get("/actions", tags=["System"])
@@ -158,10 +180,14 @@ def create_app() -> FastAPI:
         try:
             from sentence_transformers import SentenceTransformer
             from env.misinfo_env import MisInfoForensicsEnv
-            MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
-                config.HF_EMBEDDING_MODEL
-            )
-            logger.info("Sentence-transformer pre-warmed successfully.")
+            if not hasattr(MisInfoForensicsEnv, '_shared_embedder') or \
+               MisInfoForensicsEnv._shared_embedder is None:
+                MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
+                    config.HF_EMBEDDING_MODEL
+                )
+                logger.info("Sentence-transformer pre-warmed successfully.")
+            else:
+                logger.info("Sentence-transformer already loaded, skipping pre-warm.")
         except Exception as warm_exc:
             logger.warning("Embedder pre-warm failed: %s", warm_exc)
         # Mounts at / so the HF Space shows the UI immediately

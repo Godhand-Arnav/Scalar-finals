@@ -78,15 +78,12 @@ class HeuristicAgent:
         if not flagged and contra_norm > 0.2:
             return ACTIONS.index("flag_manipulation")
 
-        # ── Phase 5: Multi-class verdict decision ────────────────────────────────
+        # ── Phase 5: Multi-class verdict based on graph signals ──────────────
         if budget < 0.4 or coverage > 0.6:
-            # Use contradiction level + manipulation flag + task signals for classification
-            if flagged:
-                # Manipulation flagged — likely coordinated or fabricated
-                if contra_norm > 0.35:
-                    return ACTIONS.index("submit_verdict_coordinated_campaign") if "submit_verdict_coordinated_campaign" in ACTIONS else ACTIONS.index("submit_verdict_misinfo")
-                else:
-                    return ACTIONS.index("submit_verdict_fabricated")
+            if flagged and contra_norm > 0.35:
+                return ACTIONS.index("submit_verdict_misinfo")
+            elif flagged:
+                return ACTIONS.index("submit_verdict_fabricated")
             elif contra_norm > 0.4:
                 return ACTIONS.index("submit_verdict_misinfo")
             elif contra_norm > 0.2:
@@ -99,7 +96,7 @@ class HeuristicAgent:
         if not used("request_context"):
             return ACTIONS.index("request_context")
 
-        # Final fallback based on accumulated signals
+        # Final fallback
         if contra_norm > 0.25:
             return ACTIONS.index("submit_verdict_misinfo")
         elif contra_norm > 0.08:

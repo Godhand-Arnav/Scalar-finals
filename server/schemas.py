@@ -2,7 +2,7 @@
 server/schemas.py — OpenEnv Compatible API schemas
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, List, Optional
 
 
@@ -46,32 +46,31 @@ class StateResponse(BaseModel):
 
 
 class Observation(BaseModel):
-    """OpenEnv typed observation model."""
+    """OpenEnv typed observation."""
     episode_id: str
-    vector: List[float] = Field(..., description="Flat numpy observation vector of length 3859")
-    claim_text: str = Field(default="", description="Human-readable claim being investigated")
+    vector: List[float] = Field(..., description="Flat observation vector, length 3859")
+    claim_text: str = Field(default="")
     evidence_coverage: float = Field(default=0.0, ge=0.0, le=1.0)
     source_diversity: float = Field(default=0.0, ge=0.0, le=1.0)
     contradiction_count: int = Field(default=0, ge=0)
     manipulation_flagged: bool = Field(default=False)
     budget_remaining: float = Field(default=1.0, ge=0.0, le=1.0)
     steps_used: int = Field(default=0, ge=0)
-    step: int = Field(default=0, ge=0)
 
 
 class Action(BaseModel):
-    """OpenEnv typed action model."""
-    action: int = Field(..., ge=0, le=12, description="Discrete action index 0-12")
-    episode_id: Optional[str] = Field(default=None)
-    action_name: Optional[str] = Field(default=None, description="Human-readable action name")
+    """OpenEnv typed action."""
+    action: int = Field(..., ge=0, le=12)
+    episode_id: Optional[str] = None
+    action_name: Optional[str] = None
 
 
 class Reward(BaseModel):
-    """OpenEnv typed reward model."""
-    value: float = Field(..., description="Scalar reward for this step, clipped to [0.0, 1.0]")
+    """OpenEnv typed reward."""
+    value: float = Field(..., ge=0.001, le=0.999)
     done: bool
-    shaped: bool = Field(default=True, description="Whether potential-based shaping was applied")
-    components: Dict[str, float] = Field(default_factory=dict, description="Reward component breakdown")
+    shaped: bool = True
+    components: Dict[str, float] = Field(default_factory=dict)
 
 
 class GradeResponse(BaseModel):
@@ -86,3 +85,8 @@ class GradeResponse(BaseModel):
     efficiency_score: float
     total_reward: float
     grade_breakdown: Dict[str, float]
+
+    @field_validator("accuracy", "total_reward", "efficiency_score", mode="before")
+    @classmethod
+    def clip_to_open_interval(cls, v):
+        return round(float(max(0.001, min(0.999, float(v)))), 4)

@@ -203,7 +203,7 @@ class FabricatedStatsTask(BaseTask):
         1. Agent must use 'entity_link' or 'cross_reference' (+0.5)
         2. Agent must submit the correct final verdict (+0.5)
         """
-        score = 0.0
+        score = 0.001
         used_key_tools = any(
             step["action"] in ["entity_link", "cross_reference"]
             for step in episode_trace if "action" in step
@@ -218,4 +218,5 @@ class FabricatedStatsTask(BaseTask):
         if final_verdict == graph.true_label:
             score += 0.5
 
-        return score
+        import numpy as np
+        return float(np.clip(score, 0.001, 0.999))
