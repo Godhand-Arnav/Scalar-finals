@@ -77,4 +77,3 @@ flake8_output.txt
 lint_errors.txt
 diff.txt
 diff_utf8.txt
-uv.lock
