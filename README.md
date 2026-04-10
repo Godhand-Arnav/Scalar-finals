@@ -51,12 +51,14 @@ moderation teams triage and escalate content.
 ## Environment
 
 **Observation** — `Box(3859,)` float32:
+```text
 [0:3840]     Sentence embeddings of up to 10 discovered claim graph nodes
 [3840:3853]  Tool usage history (call counts per action)
-[3853:3859]  Graph scalars: coverage, diversity, contradictions,
-manipulation_flag, budget_remaining, steps_ratio
+[3853:3859]  Graph scalars: coverage, diversity, contradictions, manipulation_flag, budget_remaining, steps_ratio
+```
 
 **Actions** — `Discrete(13)`:
+```text
 Investigation tools (0-7):
 0  query_source      Domain credibility check
 1  trace_origin      Wayback Machine / propagation tracing
@@ -66,18 +68,21 @@ Investigation tools (0-7):
 5  temporal_audit    Timestamp anomaly detection
 6  network_cluster   Bot network / coordination detection
 7  flag_manipulation Free action — tag adversarial intent
+
 Verdicts (8-12):
 8   submit_verdict_real
 9   submit_verdict_misinfo
 10  submit_verdict_satire
 11  submit_verdict_out_of_context
 12  submit_verdict_fabricated
+```
 
 **Reward** — Dense, potential-based shaped reward (Ng et al., 1999):
+```text
 Step reward:    r = base + γΦ(s') − Φ(s)
-Terminal:       correctness + calibration bonus + efficiency bonus
-+ manipulation detection component
+Terminal:       correctness + calibration bonus + efficiency bonus + manipulation detection component
 Range:          (0.001, 0.999) — strictly open interval
+```
 
 ## Tasks
 
@@ -186,6 +191,7 @@ wrong context), satire (intentional parody), misinfo (false claims),
 and real — matching the taxonomy used by professional fact-checkers.
 
 ## Architecture
+```text
 FORGE/
 ├── env/
 │   ├── misinfo_env.py      Gymnasium-compatible environment
@@ -206,3 +212,4 @@ FORGE/
 │   └── network_cluster.py  Graph-based bot detection
 ├── server/                 FastAPI OpenEnv REST API
 └── inference.py            OpenEnv evaluation script
+```
