@@ -235,11 +235,43 @@ class VerifiedFactTask(BaseTask):
           +0.4  submitted correct final verdict
         Penalty:
           -0.2  used flag_manipulation on a real claim (false positive)
+
+        Exploit resistance:
+        - Requires >= 2 unique investigation tools
+        - Requires a submitted verdict for score > 0.3
         """
         import numpy as np
         score = 0.001
         actions = [s.get("action", "") for s in episode_trace if "action" in s]
 
+        # ── Exploit guard 1: tool diversity requirement ─────────────────────
+        investigation_tools = [
+            a for a in actions
+            if not a.startswith("submit_verdict") and a != "flag_manipulation"
+        ]
+        unique_tools = len(set(investigation_tools))
+        if unique_tools < 2:
+            final_verdict = next(
+                (a.replace("submit_verdict_", "") for a in reversed(actions)
+                 if a.startswith("submit_verdict_")), None
+            )
+            if final_verdict == graph.true_label:
+                return float(np.clip(0.4, 0.001, 0.999))
+            return 0.001
+
+        # ── Exploit guard 2: verdict required ───────────────────────────────
+        final_verdict = next(
+            (a.replace("submit_verdict_", "") for a in reversed(actions)
+             if a.startswith("submit_verdict_")), None
+        )
+        if final_verdict is None:
+            if "cross_reference" in actions:
+                score += 0.3
+            if "entity_link" in actions:
+                score += 0.3
+            return float(np.clip(score * 0.3, 0.001, 0.999))
+
+        # ── Standard grading ────────────────────────────────────────────────
         if "cross_reference" in actions:
             score += 0.3
         if "entity_link" in actions:
@@ -249,10 +281,6 @@ class VerifiedFactTask(BaseTask):
         if "flag_manipulation" in actions and graph.true_label == "real":
             score -= 0.2
 
-        final_verdict = next(
-            (a.replace("submit_verdict_", "") for a in reversed(actions)
-             if a.startswith("submit_verdict_")), None
-        )
         if final_verdict == graph.true_label:
             score += 0.4
         elif final_verdict is not None and final_verdict != "real":

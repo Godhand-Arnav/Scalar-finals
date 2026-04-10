@@ -1,210 +1,208 @@
 ---
 title: FORGE Misinformation RL
-colorFrom: blue
-colorTo: indigo
+colorFrom: teal
+colorTo: blue
 sdk: docker
 pinned: true
 tags:
   - openenv
-  - reinforcement-learning
+  - reinforcement-learning  
   - misinformation
   - fact-checking
+  - trust-and-safety
   - graph-neural-network
-  - natural-language-processing
+  - content-moderation
 ---
 
 # FORGE: Forensic RL Graph Environment
 
-> An OpenEnv-compliant reinforcement learning environment for training 
-> agents to investigate and classify misinformation — the way human 
-> fact-checkers actually do it.
+> Train and evaluate agents that investigate misinformation the way 
+> human fact-checkers actually do — sequentially, under time pressure, 
+> with incomplete information.
 
-## Why FORGE?
+> [Why FORGE matters for real-world content moderation →](REAL_WORLD_IMPACT.md)
 
-Most misinformation benchmarks treat fact-checking as text classification.
-Real Trust & Safety engineers do something fundamentally different: they 
-**investigate**. They query source credibility, trace image origins, 
-cross-reference with authoritative databases, audit timelines, and map 
-coordinated bot amplification networks — all under time pressure.
+## The Problem FORGE Solves
 
-FORGE simulates exactly this investigative workflow as a sequential 
-decision-making problem. An agent must choose which forensic tool to 
-apply at each step, accumulate evidence in a claim graph, and submit a 
-verdict before its step budget runs out.
+Content moderation at scale faces a fundamental tension: human 
+fact-checkers are accurate but slow; automated classifiers are fast 
+but shallow. Neither approach models the **investigative process** 
+that experienced Trust & Safety engineers use.
 
-**Real-world value:** An agent trained on FORGE could be deployed as an 
-automated first-pass content moderation system, triaging claims for human 
-review at the speed of social media spread.
+FORGE bridges this gap. It frames fact-checking as a sequential 
+decision problem where an agent must:
 
-## Environment Design
+- Choose which forensic tool to apply at each step
+- Build a structured evidence graph from tool results  
+- Submit a verdict under a tight step budget
 
-**Observation Space** — `Box(3859,)` float32:
-- `[0:3840]` — 384-dim sentence embeddings for up to 10 discovered graph nodes
-- `[3840:3853]` — Tool call history (how many times each of 13 actions was used)
-- `[3853:3859]` — Graph scalars: `evidence_coverage`, `source_diversity`, 
-  `contradiction_count`, `manipulation_flagged`, `budget_remaining`, `steps_used_ratio`
+An agent trained on FORGE learns **investigation policies** — not 
+just classification boundaries. It learns that some claims require 
+source verification first; others require timeline analysis; others 
+require bot network detection. This mirrors how real content 
+moderation teams triage and escalate content.
 
-**Action Space** — `Discrete(13)`:
+**Immediate applications:**
+- Training automated triage systems for content moderation pipelines
+- Benchmarking LLMs on structured investigative reasoning
+- Studying how investigation strategies transfer across misinformation types
+- Evaluating whether agents can prioritise the right tools under budget constraints
 
-| Index | Action | Description |
-|---|---|---|
-| 0 | `query_source` | Retrieve domain credibility score |
-| 1 | `trace_origin` | Find oldest archival instance |
-| 2 | `cross_reference` | Check against Wikipedia/encyclopedic sources |
-| 3 | `request_context` | LLM-synthesised structural summary |
-| 4 | `entity_link` | Verify entity existence and classification |
-| 5 | `temporal_audit` | Analyse timestamp anomalies and EXIF data |
-| 6 | `network_cluster` | Detect coordinated bot amplification |
-| 7 | `flag_manipulation` | Free action: tag deliberate adversarial intent |
-| 8–12 | `submit_verdict_*` | Submit final verdict (real/misinfo/satire/out_of_context/fabricated) |
+## Environment
 
-**Reward Function** — Potential-based dense shaping (Ng et al., 1999):
-- Terminal reward: correctness + calibration bonus + efficiency bonus + manipulation component
-- Step reward: `Φ(s') − Φ(s)` where `Φ = coverage + diversity + contradiction_area + network_diameter`
-- All rewards clipped to open interval `(0.001, 0.999)` per OpenEnv spec
+**Observation** — `Box(3859,)` float32:
+[0:3840]     Sentence embeddings of up to 10 discovered claim graph nodes
+[3840:3853]  Tool usage history (call counts per action)
+[3853:3859]  Graph scalars: coverage, diversity, contradictions,
+manipulation_flag, budget_remaining, steps_ratio
+
+**Actions** — `Discrete(13)`:
+Investigation tools (0-7):
+0  query_source      Domain credibility check
+1  trace_origin      Wayback Machine / propagation tracing
+2  cross_reference   Wikipedia / encyclopedia verification
+3  request_context   LLM structural summarisation
+4  entity_link       Wikidata entity disambiguation
+5  temporal_audit    Timestamp anomaly detection
+6  network_cluster   Bot network / coordination detection
+7  flag_manipulation Free action — tag adversarial intent
+Verdicts (8-12):
+8   submit_verdict_real
+9   submit_verdict_misinfo
+10  submit_verdict_satire
+11  submit_verdict_out_of_context
+12  submit_verdict_fabricated
+
+**Reward** — Dense, potential-based shaped reward (Ng et al., 1999):
+Step reward:    r = base + γΦ(s') − Φ(s)
+Terminal:       correctness + calibration bonus + efficiency bonus
++ manipulation detection component
+Range:          (0.001, 0.999) — strictly open interval
 
 ## Tasks
 
-| # | Task | Difficulty | Domain | Key Tools | Grader |
-|---|---|---|---|---|---|
-| 1 | `fabricated_stats` | Easy | Health/Science | entity_link, cross_reference | ✅ |
-| 2 | `verified_fact` | Easy | Control/Negative | cross_reference, entity_link | ✅ |
-| 3 | `out_of_context` | Medium | Media | trace_origin, temporal_audit | ✅ |
-| 4 | `politifact_liar` | Medium | Politics (LIAR dataset) | cross_reference, entity_link | ✅ |
-| 5 | `satire_news` | Medium | Linguistics | request_context, cross_reference | ✅ |
-| 6 | `coordinated_campaign` | Hard | Social Networks | network_cluster, query_source | ✅ |
-| 7 | `image_forensics` | Hard | Multimodal | temporal_audit, trace_origin | ✅ |
-| 8 | `sec_fraud` | Hard | Financial/SEC | cross_reference, entity_link | ✅ |
+| Task | Difficulty | Domain | Required Tools | Real Data |
+|---|---|---|---|---|
+| `fabricated_stats` | Easy | Science/Health | entity_link, cross_reference | No |
+| `verified_fact` | Easy | Control | cross_reference, entity_link | No |
+| `out_of_context` | Medium | Media/Images | trace_origin, temporal_audit | No |
+| `politifact_liar` | Medium | Politics | cross_reference, entity_link | **LIAR dataset** |
+| `satire_news` | Medium | Journalism | request_context, cross_reference | No |
+| `coordinated_campaign` | Hard | Social Networks | network_cluster, query_source | No |
+| `image_forensics` | Hard | Multimodal | temporal_audit, trace_origin | No |
+| `sec_fraud` | Hard | Finance/SEC | cross_reference, entity_link | No |
 
-Each grader awards partial credit for correct tool usage independently 
-of verdict correctness, providing dense signal across the full trajectory.
+Each task has a deterministic grader that awards partial credit for 
+correct tool usage independently of verdict correctness — providing 
+dense signal across the full trajectory.
 
-## Setup
+## Adversarial Self-Play
 
-**Prerequisites:** Python 3.11+, Docker
+FORGE includes a GAN-inspired co-evolutionary training regime:
+Generator Agent  →  crafts misinformation designed to evade detection
+Investigator     →  learns to detect the generator's output
+↑                              ↓
+└──── mutual improvement loop ─┘
 
-```bash
-# Clone
-git clone https://github.com/Harshal1841A/Forge-RL.git
-cd Forge-RL
-
-# Install dependencies
-pip install -r requirements.txt
-
-# (Optional) Copy environment config
-cp .env.example .env
-```
-
-## Running Inference
+This mirrors the real-world dynamic where bad actors continuously 
+adapt their techniques to evade detection systems. Unlike static 
+datasets, FORGE's adversarial curriculum generates novel, 
+increasingly sophisticated misinformation patterns.
 
 ```bash
-# Offline — no API key needed (uses deterministic HeuristicAgent)
-python inference.py --episodes 2
-
-# With LLM agent (Groq free tier)
-HF_TOKEN=your_groq_key python inference.py --episodes 2
-
-# Full evaluation
-python inference.py --episodes 5 --difficulty 2
-```
-
-## Docker
-
-```bash
-# Build
-docker build -t forge-rl .
-
-# Run server
-docker run -p 7860:7860 \
-  -e HF_TOKEN=your_key \
-  -e MODEL_NAME=llama3-8b-8192 \
-  forge-rl
-
-# Verify
-curl http://localhost:7860/health
-curl -X POST http://localhost:7860/reset \
-  -H "Content-Type: application/json" \
-  -d '{"task_name": "fabricated_stats", "difficulty": 1}'
-```
-
-## OpenEnv Validation
-
-```bash
-pip install openenv-core
-openenv validate
-```
-
-## API Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/reset` | Start new episode |
-| POST | `/step` | Take action |
-| GET | `/state` | Current episode state |
-| GET | `/tasks` | List all tasks |
-| GET | `/health` | Server health + OpenEnv compliance |
-| GET | `/observations/schema` | Typed observation schema |
-| GET | `/actions/schema` | Typed action schema |
-| GET | `/rewards/schema` | Typed reward schema |
-
-## Baseline Scores
-
-Two-tier agent system: LLM ReAct agent (primary) + deterministic HeuristicAgent 
-(fallback when API unavailable — no key required).
-
-| Task | Difficulty | Heuristic | LLM ReAct |
-|---|---|---|---|
-| `fabricated_stats` | Easy | ~35% | ~70% |
-| `verified_fact` | Easy | ~45% | ~80% |
-| `out_of_context` | Medium | ~30% | ~65% |
-| `politifact_liar` | Medium | ~25% | ~60% |
-| `satire_news` | Medium | ~30% | ~65% |
-| `coordinated_campaign` | Hard | ~40% | ~85% |
-| `image_forensics` | Hard | ~20% | ~75% |
-| `sec_fraud` | Hard | ~25% | ~68% |
-| **Overall** | | **~31%** | **~71%** |
-
-Scores are reward means across 2 episodes per task. Heuristic scores 
-are fully reproducible offline with zero API calls.
-
-## Adversarial Self-Play (Novel Feature)
-
-FORGE includes a GAN-inspired training regime where two agents compete:
-
-- **Generator Agent** — Learns to craft misinformation claims that fool 
-  the investigator. Optimises for claims with high virality scores and 
-  low source credibility signals.
-- **Investigator Agent** — The standard RL agent that learns to detect 
-  the generator's output.
-
-This adversarial dynamic creates a co-evolutionary arms race, producing 
-increasingly sophisticated misinformation patterns and more robust 
-detection policies — without requiring manual curation of new examples.
-
-```bash
-# Run adversarial self-play training
 python scripts/run_selfplay.py --rounds 10 --difficulty 3
 ```
 
-This mechanism is directly analogous to how real misinformation evolves:
-bad actors adapt their techniques to evade detection, forcing Trust & 
-Safety systems to continually improve. FORGE is one of the first RL 
-environments to model this adversarial dynamic explicitly.
+## Quick Start
+
+```bash
+# Install
+git clone https://github.com/Harshal1841A/Forge-RL.git
+pip install -r requirements.txt
+
+# Run offline evaluation (no API key needed)
+python inference.py --episodes 2
+
+# Run with LLM agent
+HF_TOKEN=your_groq_key python inference.py --episodes 2
+
+# Start server
+docker build -t forge . && docker run -p 7860:7860 forge
+```
+
+## API
+
+```bash
+# Start episode
+curl -X POST /reset \
+  -d '{"task_name": "coordinated_campaign", "difficulty": 2}'
+
+# Investigate
+curl -X POST /step -d '{"action": 6}'  # network_cluster
+
+# Check what was found
+# Response includes info.hint with plain-English guidance for LLM agents
+
+# Submit verdict
+curl -X POST /step -d '{"action": 9}'  # submit_verdict_misinfo
+
+# Get graded score
+curl /episodes/{id}/grade
+```
+
+## Baseline Results
+
+| Task | Difficulty | Heuristic | LLM (Groq) |
+|---|---|---|---|
+| fabricated_stats | Easy | ~35% | ~70% |
+| verified_fact | Easy | ~45% | ~80% |
+| out_of_context | Medium | ~30% | ~65% |
+| politifact_liar | Medium | ~25% | ~60% |
+| satire_news | Medium | ~30% | ~65% |
+| coordinated_campaign | Hard | ~40% | ~85% |
+| image_forensics | Hard | ~20% | ~75% |
+| sec_fraud | Hard | ~25% | ~68% |
+
+## Design Decisions
+
+**Why graph-based observation?** Misinformation investigation is 
+inherently relational — the same claim means different things 
+depending on who is amplifying it, when it appeared, and what 
+authoritative sources say. A flat observation cannot capture this 
+structure. FORGE maintains an explicit `ClaimGraph` where nodes 
+are sources and edges represent support/contradiction/amplification 
+relationships.
+
+**Why potential-based shaping?** Binary terminal rewards provide 
+no learning signal until the final step. Potential-based shaping 
+(Ng et al., 1999) provides dense step-level rewards that are 
+guaranteed policy-invariant — the optimal policy under the shaped 
+reward is identical to the optimal policy under the sparse reward.
+
+**Why 5 verdict classes?** Binary real/fake classification is 
+insufficient for real content moderation. FORGE distinguishes 
+between fabricated (entirely made up), out_of_context (real content 
+wrong context), satire (intentional parody), misinfo (false claims), 
+and real — matching the taxonomy used by professional fact-checkers.
 
 ## Architecture
-
-```
-FORGE
+FORGE/
 ├── env/
-│   ├── misinfo_env.py      # Gymnasium-compatible environment
-│   ├── claim_graph.py      # Graph data structure for evidence
-│   ├── reward.py           # Potential-based reward shaping
-│   └── tasks/              # 8 task generators + graders
+│   ├── misinfo_env.py      Gymnasium-compatible environment
+│   ├── claim_graph.py      Evidence graph data structure
+│   ├── reward.py           Potential-based reward shaping
+│   └── tasks/              8 task generators + programmatic graders
 ├── agents/
-│   ├── llm_agent.py        # ReAct LLM agent (FSM-constrained)
-│   ├── heuristic_agent.py  # Deterministic fallback
-│   └── ppo_agent.py        # PPO training agent
-├── tools/                  # Simulated forensic tool implementations
-├── server/                 # FastAPI OpenEnv server
-└── inference.py            # OpenEnv evaluation script
-```
+│   ├── llm_agent.py        FSM-constrained ReAct LLM agent
+│   ├── heuristic_agent.py  Deterministic baseline (offline)
+│   ├── ppo_agent.py        PPO training agent
+│   └── adversarial/        GAN-style self-play agents
+├── tools/                  Forensic tool implementations
+│   ├── query_source.py     Wikipedia + DuckDuckGo
+│   ├── trace_origin.py     Wayback Machine + Wikidata
+│   ├── cross_reference.py  Wikipedia multi-article
+│   ├── entity_link.py      Wikidata SPARQL
+│   ├── temporal_audit.py   Wayback timestamp verification
+│   └── network_cluster.py  Graph-based bot detection
+├── server/                 FastAPI OpenEnv REST API
+└── inference.py            OpenEnv evaluation script

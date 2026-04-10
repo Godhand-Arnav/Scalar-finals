@@ -1,3 +1,4 @@
+"""FORGE server entry point — uvicorn launcher for the OpenEnv FastAPI application."""
 import uvicorn
 import sys
 import os

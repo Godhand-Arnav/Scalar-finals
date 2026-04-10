@@ -281,11 +281,45 @@ class ImageForensicsTask(BaseTask):
           +0.2  used trace_origin (finds original image source)
           +0.1  used entity_link (verifies depicted entities)
           +0.4  submitted correct final verdict
+
+        Exploit resistance:
+        - Requires >= 2 unique investigation tools
+        - Requires a submitted verdict for score > 0.3
         """
         import numpy as np
         score = 0.001
         actions = [s.get("action", "") for s in episode_trace if "action" in s]
 
+        # ── Exploit guard 1: tool diversity requirement ─────────────────────
+        investigation_tools = [
+            a for a in actions
+            if not a.startswith("submit_verdict") and a != "flag_manipulation"
+        ]
+        unique_tools = len(set(investigation_tools))
+        if unique_tools < 2:
+            final_verdict = next(
+                (a.replace("submit_verdict_", "") for a in reversed(actions)
+                 if a.startswith("submit_verdict_")), None
+            )
+            if final_verdict == graph.true_label:
+                return float(np.clip(0.4, 0.001, 0.999))
+            return 0.001
+
+        # ── Exploit guard 2: verdict required ───────────────────────────────
+        final_verdict = next(
+            (a.replace("submit_verdict_", "") for a in reversed(actions)
+             if a.startswith("submit_verdict_")), None
+        )
+        if final_verdict is None:
+            if "temporal_audit" in actions:
+                score += 0.3
+            if "trace_origin" in actions:
+                score += 0.2
+            if "entity_link" in actions:
+                score += 0.1
+            return float(np.clip(score * 0.3, 0.001, 0.999))
+
+        # ── Standard grading ────────────────────────────────────────────────
         if "temporal_audit" in actions:
             score += 0.3
         if "trace_origin" in actions:
@@ -293,10 +327,6 @@ class ImageForensicsTask(BaseTask):
         if "entity_link" in actions:
             score += 0.1
 
-        final_verdict = next(
-            (a.replace("submit_verdict_", "") for a in reversed(actions)
-             if a.startswith("submit_verdict_")), None
-        )
         if final_verdict == graph.true_label:
             score += 0.4
         elif final_verdict is not None:

@@ -616,6 +616,16 @@ def _investigate_inner(task_name, difficulty):
         gr.update(interactive=True),
     )
 
+# ─── Example Claims for Quick Demo ────────────────────────────────────────────
+
+EXAMPLE_CLAIMS = [
+    ("fabricated_stats", 1, "WHO Cancer Coffee Claim"),
+    ("satire_news", 1, "Satirical Headlines"),
+    ("coordinated_campaign", 2, "Bot Network Detection"),
+    ("sec_fraud", 2, "Financial Fraud"),
+    ("image_forensics", 3, "Deepfake Detection"),
+]
+
 # ─── Gradio App ───────────────────────────────────────────────────────────────
 
 NEBULA_THEME = gr.themes.Base(
@@ -634,8 +644,22 @@ NEBULA_THEME = gr.themes.Base(
     background_fill_primary="transparent",
 )
 
-with gr.Blocks(title="Forensics AI // Vibrant Nebula") as demo:
+with gr.Blocks(title="FORGE — Forensic RL Graph Environment") as demo:
     gr.HTML(_topnav_html())
+
+    # ── Live Stats Panel ──────────────────────────────────────────────────────
+    with gr.Row():
+        gr.Markdown("""
+| Stat | Value |
+|------|-------|
+| Tasks | 8 |
+| Action space | Discrete(13) |
+| Observation dim | 3,859 |
+| Difficulty levels | 4 |
+| Real-world dataset | LIAR (PolitiFact) |
+| Reward type | Dense + potential-shaped |
+| Offline capable | Yes |
+        """)
 
     with gr.Row(elem_classes=["main-container"]):
         # Left panel: Logs
@@ -663,11 +687,27 @@ with gr.Blocks(title="Forensics AI // Vibrant Nebula") as demo:
                 with gr.Row():
                     start_btn = gr.Button("Launch Deep Analysis", variant="primary")
                 
+                # ── Quick-start examples ──────────────────────────────────────
+                gr.Examples(
+                    examples=[[t, d] for t, d, _ in EXAMPLE_CLAIMS],
+                    inputs=[task_dd, diff_sl],
+                    label="⚡ Quick start — click any example to load it",
+                )
+
                 statusbar = gr.HTML(value=_statusbar_html("IDLE", "0.0K/S"))
 
         # Right panel: Reasoning
         with gr.Column(scale=3, elem_classes=["glass-panel"]):
             right_panel = gr.HTML(value=_right_panel_idle())
+
+    # ── Graph Summary Output ──────────────────────────────────────────────────
+    with gr.Row():
+        graph_summary_box = gr.Textbox(
+            label="Evidence Graph Summary",
+            lines=6,
+            interactive=False,
+            placeholder="Run an investigation to see graph statistics...",
+        )
 
     # Event Wiring
     start_btn.click(

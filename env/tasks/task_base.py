@@ -36,8 +36,14 @@ class BaseTask(ABC):
 
     def grade(self, episode_trace: list[dict], graph: ClaimGraph) -> float:
         """
-        Evaluate an agent's trace (list of tool calls and verdicts) and return a score from 0.0 to 1.0.
-        Tasks should override this method to provide deterministic success criteria.
+        Evaluate an agent's trace (list of tool calls and verdicts) and return a score.
+
+        Grader contract:
+        - Score requires both correct tool usage AND correct verdict
+        - Score 0.001 if no verdict submitted
+        - Score 0.001 if fewer than 2 investigation tools used
+        - Score range (0.001, 0.999) — never exactly 0 or 1
+        - Deterministic: same trace + graph = same score
         """
         return 0.001
 

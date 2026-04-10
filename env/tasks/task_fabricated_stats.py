@@ -264,21 +264,48 @@ class FabricatedStatsTask(BaseTask):
         Easy Task:
         1. Agent must use 'entity_link' or 'cross_reference' (+0.5)
         2. Agent must submit the correct final verdict (+0.5)
+
+        Exploit resistance:
+        - Requires >= 2 unique investigation tools
+        - Requires a submitted verdict for score > 0.3
         """
-        score = 0.001
-        used_key_tools = any(
-            step["action"] in ["entity_link", "cross_reference"]
-            for step in episode_trace if "action" in step
+        import numpy as np
+        actions = [s.get("action", "") for s in episode_trace if "action" in s]
+
+        # ── Exploit guard 1: tool diversity requirement ─────────────────────
+        investigation_tools = [
+            a for a in actions
+            if not a.startswith("submit_verdict") and a != "flag_manipulation"
+        ]
+        unique_tools = len(set(investigation_tools))
+        if unique_tools < 2:
+            final_verdict = next(
+                (a.replace("submit_verdict_", "") for a in reversed(actions)
+                 if a.startswith("submit_verdict_")), None
+            )
+            if final_verdict == graph.true_label:
+                return float(np.clip(0.4, 0.001, 0.999))
+            return 0.001
+
+        # ── Exploit guard 2: verdict required ───────────────────────────────
+        final_verdict = next(
+            (a.replace("submit_verdict_", "") for a in reversed(actions)
+             if a.startswith("submit_verdict_")), None
         )
+        if final_verdict is None:
+            score = 0.001
+            used_key_tools = any(a in ["entity_link", "cross_reference"] for a in actions)
+            if used_key_tools:
+                score += 0.5
+            return float(np.clip(score * 0.3, 0.001, 0.999))
+
+        # ── Standard grading ────────────────────────────────────────────────
+        score = 0.001
+        used_key_tools = any(a in ["entity_link", "cross_reference"] for a in actions)
         if used_key_tools:
             score += 0.5
-
-        final_verdict = next((step["action"].replace("submit_verdict_", "")
-                              for step in reversed(episode_trace)
-                              if "action" in step and step["action"].startswith("submit_verdict")), None)
 
         if final_verdict == graph.true_label:
             score += 0.5
 
-        import numpy as np
         return float(np.clip(score, 0.001, 0.999))

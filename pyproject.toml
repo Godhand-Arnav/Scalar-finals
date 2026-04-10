@@ -7,7 +7,15 @@ name = "forge"
 version = "1.0.0"
 description = "FORGE: Forensic RL Graph Environment for Misinformation Investigation"
 readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "FORGE Team"}]
 requires-python = ">=3.11"
+keywords = ["reinforcement-learning", "misinformation", "fact-checking",
+            "openenv", "graph-neural-network", "trust-and-safety"]
+classifiers = [
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Intended Audience :: Science/Research",
+]
 dependencies = [
     "gymnasium>=0.29.1",
     "numpy>=1.24.0",
@@ -36,3 +44,4 @@ py-modules = []
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
