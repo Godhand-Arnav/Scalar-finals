@@ -1,6 +1,6 @@
 ---
 title: FORGE Misinformation RL
-colorFrom: teal
+colorFrom: green
 colorTo: blue
 sdk: docker
 pinned: true
