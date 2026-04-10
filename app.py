@@ -108,6 +108,15 @@ body {
     transform: translateY(-4px);
 }
 
+.controls-panel {
+    background: rgba(15, 23, 42, 0.85) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    padding: 20px;
+    margin-top: 16px;
+}
+
 .claim-text {
     font-size: clamp(22px, 2vw, 26px) !important;
     font-weight: 500;
@@ -695,7 +704,8 @@ with gr.Blocks(title="FORGE — Forensic RL Graph Environment") as demo:
             with gr.Column(elem_classes=["glass-panel"]):
                 center_panel = gr.HTML(value=_center_idle())
                 
-                with gr.Row(variant="compact"):
+            with gr.Column(elem_classes=["controls-panel"]):
+                with gr.Row():
                     with gr.Column(scale=3):
                         task_dd = gr.Dropdown(
                             choices=["All Tasks (Random)"] + list(TASK_REGISTRY.keys()),
