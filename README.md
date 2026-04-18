@@ -2,7 +2,7 @@
 title: FORGE Misinformation RL
 colorFrom: green
 colorTo: blue
-sdk: docker
+sdk: gradio
 pinned: true
 tags:
   - openenv

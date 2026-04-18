@@ -1497,9 +1497,9 @@ with gr.Blocks(
 
 
 if __name__ == "__main__":
+    # Note: On Hugging Face Spaces, Gradio ignores server_name/port 
+    # to avoid infrastructure conflicts.
     demo.queue().launch(
-        server_name="0.0.0.0",
-        server_port=7860,
         theme=NEBULA_THEME,
         css=FORGE_CSS,
     )
