@@ -1,0 +1,55 @@
+name: forge
+version: 1.0.0
+description: "FORGE: Forensic RL Graph Environment for Misinformation Investigation"
+author: "FORGE Team"
+tags: [openenv]
+tasks:
+  - id: fabricated_stats
+    difficulty: easy
+  - id: out_of_context
+    difficulty: medium
+  - id: coordinated_campaign
+    difficulty: hard
+  - id: politifact_liar
+    difficulty: medium
+  - id: image_forensics
+    difficulty: hard
+  - id: sec_fraud
+    difficulty: hard
+  - id: verified_fact
+    difficulty: easy
+  - id: satire_news
+    difficulty: medium
+docker:
+  build: .
+  port: 7860
+endpoints:
+  reset:
+    path: /reset
+    method: POST
+  step:
+    path: /step
+    method: POST
+  state:
+    path: /state
+    method: GET
+  tasks:
+    path: /tasks
+    method: GET
+  observations_schema:
+    path: /observations/schema
+    method: GET
+  actions_schema:
+    path: /actions/schema
+    method: GET
+  rewards_schema:
+    path: /rewards/schema
+    method: GET
+observation_space:
+  type: Box
+  shape: [3859]
+  dtype: float32
+action_space:
+  type: Discrete
+  n: 13
+reward_range: [0.001, 0.999]
