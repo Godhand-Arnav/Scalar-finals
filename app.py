@@ -984,6 +984,18 @@ button.secondary:hover {
 }
 """
 
+# ─── Gradio theme (exported so server/main.py can mount it) ───────────────────
+NEBULA_THEME = gr.themes.Base(
+    primary_hue="blue", secondary_hue="purple", neutral_hue="slate",
+    font=gr.themes.GoogleFont("Inter")
+).set(
+    body_background_fill="transparent",
+    block_background_fill="transparent",
+    block_border_width="0px",
+    input_background_fill="rgba(0,0,0,0.4)",
+    input_border_color="rgba(255,255,255,0.12)"
+)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PREMIUM JS — ENHANCED AURORA SHADER + ROBUST CURSOR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1612,15 +1624,6 @@ with gr.Blocks(
 if __name__ == "__main__":
     demo.queue(api_open=False, default_concurrency_limit=10).launch(
         server_name="0.0.0.0", server_port=7860,
-        theme=gr.themes.Base(
-            primary_hue="blue", secondary_hue="purple", neutral_hue="slate",
-            font=gr.themes.GoogleFont("Inter")
-        ).set(
-            body_background_fill="transparent",
-            block_background_fill="transparent",
-            block_border_width="0px",
-            input_background_fill="rgba(0,0,0,0.4)",
-            input_border_color="rgba(255,255,255,0.12)"
-        ),
+        theme=NEBULA_THEME,
         css=FORGE_CSS, js=FORGE_JS
     )
