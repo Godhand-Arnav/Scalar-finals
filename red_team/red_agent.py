@@ -181,6 +181,7 @@ class RedAgent:
                 # If random action, we don't track x, edge_index because it's not on policy,
                 # but to avoid breaking the trainer, we record it.
                 if hasattr(self, '_last_x'):
+                     pi = ALL_PRIMITIVES.index(prim)
                      self.history.append((self._last_x.detach().cpu(), self._last_edge.detach().cpu(), ti, pi))
                 return action
         return None
