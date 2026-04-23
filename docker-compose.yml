@@ -25,6 +25,23 @@ services:
     networks:
       - forge-net
 
+  # ── Next.js Frontend ─────────────────────────────────────────────────────────
+  forge-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: forge_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://forge-api:7860
+    depends_on:
+      - forge-api
+    restart: unless-stopped
+    networks:
+      - forge-net
+
+
   # ── PPO Training Worker (optional) ────────────────────────────────────────────
   forge-train:
     build: .

@@ -38,18 +38,24 @@ We have ruthlessly minimized technical debt to provide you with a clean, profess
 * **The Graveyard is Gone:** Removed over 100KB of redundant, legacy code (including `app_head.py`).
 * **Transient Purge:** Cleared all temporary caches, leftover training logs, and abandoned scratch scripts.
 * **FSM-Compliant Agents:** The `llm_agent.py` logic strictly enforces Finite State Machine actions, completely preventing invalid "verdict jumps" without requisite evidence.
-* **UI Stabilization:** The Gradio frontend (`app.py`, `frontend/theme.py`) includes a high-priority **"STOP ANALYSIS"** interrupt to prevent autonomous loop hangs, and accurate graph rendering for live evidence nodes.
+* **UI Modernization:** Replaced the legacy Gradio monolith with a modern, decoupled **Next.js (`frontend/`)** SaaS dashboard backed by a dedicated FastAPI REST API (`server/`).
 
 ---
 
 ## 🏁 How to Evaluate
 
-1. **Start the Environment:**
+1. **Start the API Server (Terminal 1):**
    ```bash
-   python app.py
+   python -m uvicorn server.main:app --host 0.0.0.0 --port 7860
    ```
-2. **Access the Dashboard:** Open your browser to `http://localhost:7860`.
-3. **Run the Capstone:** Select the "Plandemic" scenario from the task dropdown and click "Begin Investigation". Watch as the Multi-Provider Society of Thought dissects the generated claim.
-4. **Inspect the Weights:** View the trained checkpoints `checkpoints/gin_model.pt` and `checkpoints/hae_model.pt` that power the backend logic.
+2. **Start the Frontend (Terminal 2):**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+3. **Access the Dashboard:** Open your browser to `http://localhost:3000`.
+4. **Run the Capstone:** Select the "Plandemic" scenario from the task dropdown and click "Begin Investigation". Watch as the Multi-Provider Society of Thought dissects the generated claim.
+5. **Inspect the Weights:** View the trained checkpoints `checkpoints/gin_model.pt` and `checkpoints/hae_model.pt` that power the backend logic.
 
 *We hope you enjoy reviewing FORGE-MA as much as we enjoyed building it!*
