@@ -94,14 +94,23 @@ cp .env.example .env
 # Edit .env with your provider keys
 ```
 
-### 3. Launch the Dashboard
-Start the unified Gradio UI (access both FORGE v1 and FORGE-MA interfaces):
+### 3. Launch the Backend API
+Start the FastAPI server:
 ```bash
-python app.py
+python -m uvicorn server.main:app --host 0.0.0.0 --port 7860
 ```
-*The dashboard will be available at `http://localhost:7860`.*
+*Interactive API docs available at `http://localhost:7860/docs`.*
 
-### 4. Testing
+### 4. Launch the Frontend
+Start the Next.js UI (in a separate terminal):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+*The dashboard will be available at `http://localhost:3000`.*
+
+### 5. Testing
 Run the comprehensive test suites to verify integrity:
 ```bash
 # Run core FORGE v1 tests
