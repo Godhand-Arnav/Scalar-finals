@@ -171,30 +171,22 @@ def create_app() -> FastAPI:
         logger.error("Unhandled exception: %s", exc, exc_info=True)
         return JSONResponse(status_code=500, content={"detail": str(exc)})
 
-    # ── Mount Interactive Gradio UI on root ───────────────────────────────────
+    # ── Pre-warm Sentence Transformer ─────────────────────────────────────────
+    # Pre-warm the sentence-transformer so the first investigation request
+    # doesn't block the uvicorn worker for 30+ seconds.
     try:
-        import gradio as gr
-        from app import demo, FORGE_CSS, NEBULA_THEME
-        # Pre-warm the sentence-transformer so the first investigation request
-        # doesn't block the uvicorn worker for 30+ seconds.
-        try:
-            from sentence_transformers import SentenceTransformer
-            from env.misinfo_env import MisInfoForensicsEnv
-            if not hasattr(MisInfoForensicsEnv, '_shared_embedder') or \
-               MisInfoForensicsEnv._shared_embedder is None:
-                MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
-                    config.HF_EMBEDDING_MODEL
-                )
-                logger.info("Sentence-transformer pre-warmed successfully.")
-            else:
-                logger.info("Sentence-transformer already loaded, skipping pre-warm.")
-        except Exception as warm_exc:
-            logger.warning("Embedder pre-warm failed: %s", warm_exc)
-        # Mounts at / so the HF Space shows the UI immediately
-        # In Gradio 6.x, theme/css must be passed here (launch() is never called in server mode)
-        app = gr.mount_gradio_app(app, demo, path="/", theme=NEBULA_THEME, css=FORGE_CSS)
-    except Exception as getattr_exc:
-        logger.warning(f"Could not mount Gradio UI: {getattr_exc}")
+        from sentence_transformers import SentenceTransformer
+        from env.misinfo_env import MisInfoForensicsEnv
+        if not hasattr(MisInfoForensicsEnv, '_shared_embedder') or \
+           MisInfoForensicsEnv._shared_embedder is None:
+            MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
+                config.HF_EMBEDDING_MODEL
+            )
+            logger.info("Sentence-transformer pre-warmed successfully.")
+        else:
+            logger.info("Sentence-transformer already loaded, skipping pre-warm.")
+    except Exception as warm_exc:
+        logger.warning("Embedder pre-warm failed: %s", warm_exc)
 
     return app
 
