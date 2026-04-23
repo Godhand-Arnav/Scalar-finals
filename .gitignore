@@ -1,0 +1,102 @@
+# Environment Variables (DO NOT COMMIT - SECURITY)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Node.js (for spatial-saas frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+*.tsbuildinfo
+dist/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+forge.db
+forge_memory.db
+
+# Logs
+logs/
+*.log
+*.logs
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Poetry
+poetry.lock
+
+# uv lock files (keep but exclude large lock files in certain contexts)
+# uv.lock  - uncomment if needed
+
+# Local development
+.env
+*.local
+local_config.py
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
