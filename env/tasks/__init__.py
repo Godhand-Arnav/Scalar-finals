@@ -11,6 +11,7 @@ from env.tasks.task_image_forensics import ImageForensicsTask
 from env.tasks.task_sec_fraud import SECFraudTask
 from env.tasks.task_verified_fact import VerifiedFactTask
 from env.tasks.task_satire_news import SatiricalClaimTask
+from env.tasks.task_plandemic import PlandemicTask
 
 TASK_REGISTRY = {
     "fabricated_stats": FabricatedStatsTask,
@@ -21,6 +22,7 @@ TASK_REGISTRY = {
     "sec_fraud": SECFraudTask,
     "verified_fact": VerifiedFactTask,
     "satire_news": SatiricalClaimTask,
+    "plandemic": PlandemicTask,
 }
 
 __all__ = [
@@ -33,5 +35,6 @@ __all__ = [
     "SECFraudTask",
     "VerifiedFactTask",
     "SatiricalClaimTask",
+    "PlandemicTask",
     "TASK_REGISTRY",
 ]

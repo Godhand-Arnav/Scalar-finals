@@ -68,6 +68,10 @@ checkpoints/
 # ── Logs ────────────────────────────────────────────────────────
 *.log
 validation.log
+forge_debug.log
+forge_memory.db
+test_out.txt
+pylint_errors*.txt
 
 # ── Docker ──────────────────────────────────────────────────────
 .dockerignore
@@ -82,3 +86,6 @@ flake8_output.txt
 lint_errors.txt
 diff.txt
 diff_utf8.txt
+app.patch
+scratch/
+project.zip

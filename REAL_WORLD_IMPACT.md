@@ -1,44 +1,40 @@
-# Real-World Impact: Why FORGE Matters
+# 🌍 Real-World Impact: Why FORGE Matters
 
-## The Gap FORGE Fills
+## The Evolution of Fact-Checking
 
-Existing misinformation benchmarks (LIAR, FakeNewsNet, MultiFC) 
-treat fact-checking as **classification**: given a claim, output 
-true/false. This misses the investigative process entirely.
+Existing misinformation benchmarks (like LIAR, FakeNewsNet, and MultiFC) treat fact-checking as a binary **classification** problem: *given a claim, output true or false.* 
 
-FORGE is the first RL environment that models fact-checking as 
-**sequential investigation** — the way human analysts actually work.
+This fundamentally misrepresents the complexity of modern digital forensics. Human analysts do not magically divine truth; they investigate. They query databases, trace IP origins, cross-reference historical archives, and construct a web of evidence.
 
-## Connection to Production Systems
+**FORGE is the first Reinforcement Learning environment that models fact-checking as a sequential investigation.**
 
-A policy trained on FORGE can be directly adapted for:
+---
 
-**Automated triage**: An agent that learned investigation policies 
-could pre-screen viral content, flagging items that exhibit 
-coordinated amplification patterns or statistical anomalies — 
-reducing the queue for human reviewers.
+## Bridging the Gap to Production
 
-**Analyst assistance**: Rather than replacing human fact-checkers, 
-a FORGE-trained agent can suggest which investigative tool to apply 
-next — accelerating investigations by surfacing the most relevant 
-evidence first.
+A policy trained within the FORGE environment is not just an academic exercise—it is a blueprint for next-generation content moderation tools.
 
-**Robustness benchmarking**: The adversarial self-play regime 
-generates novel misinformation patterns that production classifiers 
-have never seen — providing a continuous red-teaming capability.
+### 1. Automated Triage & Prioritization
+An agent that has learned robust investigation policies via FORGE can pre-screen viral content at scale. By autonomously flagging items that exhibit coordinated amplification patterns, statistical anomalies, or synthetic hallmarks, the agent drastically reduces the backlog for human review teams.
 
-## Why RL, Not Fine-tuning?
+### 2. The "Copilot" for Analysts
+Rather than attempting to replace human fact-checkers, a FORGE-trained agent acts as an advanced forensic assistant. It can suggest the highest-yield investigative tool to apply next (e.g., "Run a temporal audit on this domain"), surfacing the most critical evidence faster and breaking through dead ends.
 
-Fine-tuned LLMs for fact-checking are brittle to distribution shift 
-— they fail on misinformation patterns that weren't in their 
-training data. An RL agent trained on FORGE learns transferable 
-**investigation strategies** (check source credibility, verify 
-timestamps, detect coordination) that generalise across new patterns.
+### 3. Continuous Red-Teaming (The Adversarial Advantage)
+Static classifiers suffer from severe model decay; they cannot detect misinformation tactics invented yesterday. FORGE's adversarial self-play regime (Red Team vs. Blue Team) forces the generative adversary to continuously invent novel evasion strategies. This creates a perpetual, automated red-teaming engine that tests production classifiers against tactics they have never seen in the wild.
 
-## Benchmark vs. Training Environment
+---
 
-FORGE serves both purposes:
-- **As a benchmark**: Evaluate how well any agent (LLM, RL, hybrid) 
-  can conduct structured fact-checking investigations
-- **As a training environment**: Train policies that transfer to 
-  real-world content moderation tools
+## Why Reinforcement Learning over Fine-Tuning?
+
+Fine-tuned Large Language Models are brittle to distribution shifts. They frequently fail when confronted with misinformation structural patterns absent from their training data. 
+
+In contrast, an RL agent trained on FORGE does not memorize facts—it learns **transferable investigation strategies** (e.g., *always check source credibility, verify timestamps against claims, detect bot coordination*). These strategies generalize across entirely new disinformation campaigns, regardless of the specific topic or narrative.
+
+---
+
+## The Dual Purpose of FORGE
+
+FORGE is designed to excel in two critical domains:
+1. **As a Benchmark:** A standardized proving ground to evaluate how effectively any agent (LLM, RL, or hybrid) can conduct structured, multi-step fact-checking investigations.
+2. **As a Training Environment:** A crucible for developing highly resilient forensic policies that can be seamlessly exported to real-world Trust & Safety infrastructure.

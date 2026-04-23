@@ -134,6 +134,21 @@ class FabricatedStatsTask(BaseTask):
             edge_rel = "contradicts"
             applied_tactics = [template["tactic"]]
 
+        # Try to use LLM to dynamically generate a claim variant
+        try:
+            from agents.llm_agent_ma import LLMAgent
+            import config
+            agent = LLMAgent(
+                system_prompt="You are an expert at generating statistical claims. Provide a single claim text.", 
+                provider=config.AGENT_NEGOTIATED_PROVIDER
+            )
+            prompt = f"Generate a novel {'true' if is_true else 'false'} statistical claim matching this theme: {template['text']}. Return only the claim text, no quotes or prefixes."
+            dynamic_text = agent.query(prompt)
+            if dynamic_text and "MOCK:" not in dynamic_text:
+                template["text"] = dynamic_text.strip().strip('"')
+        except Exception as e:
+            pass # Fallback to static template
+        
         graph_id = str(uuid.uuid4())
         root_id = "node_root"
 
