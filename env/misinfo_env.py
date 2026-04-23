@@ -7,7 +7,9 @@ from __future__ import annotations
 import copy
 import logging
 import random
+import threading
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
@@ -119,6 +121,7 @@ class MisInfoForensicsEnv(gym.Env):
         self._prev_potential: float = 0.0
         self._tool_history: np.ndarray = np.zeros(N_ACTIONS, dtype=np.float32)
         self._done: bool = True
+        self._graph_lock = threading.RLock()
 
         # Embedder (local, free)
         self._embedder = None   # lazy-loaded
@@ -136,19 +139,21 @@ class MisInfoForensicsEnv(gym.Env):
 
         # Sample task
         self.current_task = random.choice(self.tasks)
-        self.graph = self.current_task.generate(
-            difficulty=self.difficulty, seed=ep_seed
-        )
+        with self._graph_lock:
+            self.graph = self.current_task.generate(
+                difficulty=self.difficulty, seed=ep_seed
+            )
 
-        # Dynamic step budget — scaled by curriculum budget multiplier
-        self.max_steps = min(
-            int(
-                (config.BASE_EPISODE_STEPS
-                 + self.graph.num_tactics * config.STEP_COMPLEXITY_BONUS)
-                * self.budget_multiplier
-            ),
-            config.MAX_EPISODE_STEPS,
-        )
+            # Dynamic step budget — scaled by curriculum budget multiplier
+            self.max_steps = min(
+                int(
+                    (config.BASE_EPISODE_STEPS
+                     + self.graph.num_tactics * config.STEP_COMPLEXITY_BONUS)
+                    * self.budget_multiplier
+                ),
+                config.MAX_EPISODE_STEPS,
+            )
+            graph_id = self.graph.graph_id
 
         self.steps = 0
         self.manipulation_flagged = False
@@ -159,7 +164,8 @@ class MisInfoForensicsEnv(gym.Env):
         self._done = False
 
         # Initialise prev potential for reward shaping
-        self._prev_potential = compute_potential(self.graph)
+        with self._graph_lock:
+            self._prev_potential = compute_potential(self.graph)
 
         obs = self._build_obs()
         info = {
@@ -167,7 +173,7 @@ class MisInfoForensicsEnv(gym.Env):
             "task_id": self.current_task.task_id,
             "difficulty": self.difficulty,
             "max_steps": self.max_steps,
-            "graph_id": self.graph.graph_id,
+            "graph_id": graph_id,
         }
         logger.info("[START] episode=%s task=%s difficulty=%d",
                     self.episode_id, self.current_task.task_id, self.difficulty)
@@ -176,8 +182,6 @@ class MisInfoForensicsEnv(gym.Env):
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
         assert not self._done, "Call reset() before step()"
         action_name = ACTIONS[action]
-        prev_graph = copy.deepcopy(self.graph)
-
         reward = config.REWARD_CLIP_MIN
         terminated = False
         truncated = False
@@ -186,94 +190,96 @@ class MisInfoForensicsEnv(gym.Env):
             "step": self.steps,
             "action": action_name,
         }
+        with self._graph_lock:
+            prev_graph = copy.deepcopy(self.graph)
 
-        # ── Free actions (no step cost) ───────────────────────────────────────
-        if action_name == "flag_manipulation":
-            self.manipulation_flagged = True
-            reward = config.REWARD_CLIP_MIN
-            info["flagged"] = True
-            logger.info("[STEP] %s step=%d action=flag_manipulation",
-                        self.episode_id, self.steps)
-            # Check truncation — must happen even for free actions
-            truncated = self.steps >= self.max_steps
-            if truncated:
+            # ── Free actions (no step cost) ───────────────────────────────────
+            if action_name == "flag_manipulation":
+                self.manipulation_flagged = True
+                reward = config.REWARD_CLIP_MIN
+                info["flagged"] = True
+                logger.info("[STEP] %s step=%d action=flag_manipulation",
+                            self.episode_id, self.steps)
+                # Check truncation — must happen even for free actions
+                truncated = self.steps >= self.max_steps
+                if truncated:
+                    self._done = True
+                    logger.info("[END] %s truncated at step %d", self.episode_id, self.steps)
+                obs = self._build_obs()
+                return obs, reward, False, truncated, info
+
+            # ── Verdict actions ───────────────────────────────────────────────
+            if action in VERDICT_ACTIONS:
+                predicted_label = VERDICT_ACTIONS[action]
+                confidence = self._estimate_confidence()
+                terminal_r = verdict_reward(
+                    predicted_label=predicted_label,
+                    true_label=self.graph.true_label,
+                    predicted_confidence=confidence,
+                    steps_used=self.steps,
+                    max_steps=self.max_steps,
+                    manipulation_flagged=self.manipulation_flagged,
+                    true_manipulation=self.current_task.has_manipulation(self.graph),
+                )
+                terminal_r += efficiency_penalty(self.steps, self.graph.difficulty)
+
+                # Policy invariance for terminal states: shaping = 0 - prev_potential
+                terminal_r -= self._prev_potential
+
+                # RL hardening: return raw reward for internal logic, but clip for the Gym interface
+                info["raw_reward"] = terminal_r
+                reward = float(np.clip(terminal_r, config.REWARD_CLIP_MIN, config.REWARD_CLIP_MAX))
+
+                terminated = True
+                self._done = True
+                info.update({
+                    "verdict": predicted_label,
+                    "true_label": self.graph.true_label,
+                    "confidence": confidence,
+                    "correct": predicted_label == self.graph.true_label,
+                    "total_reward": reward,
+                })
+                logger.info("[END] %s verdict=%s true=%s reward=%.3f",
+                            self.episode_id, predicted_label, self.graph.true_label, reward)
+                obs = self._build_obs()
+                return obs, reward, terminated, truncated, info
+
+            # ── Tool call actions ─────────────────────────────────────────────
+            self.steps += 1
+            is_dup = self.tool_call_counts.get(action_name, 0) > 0
+            self.tool_call_counts[action_name] = self.tool_call_counts.get(action_name, 0) + 1
+            self._tool_history[action] = min(self._tool_history[action] + 1, 5.0)
+
+            # Execute tool
+            tool_result = self.tool_registry.call(action_name, self.graph)
+            info["tool_result"] = tool_result
+
+            new_nodes = tool_result.get("new_nodes", 0)
+            new_contradictions = tool_result.get("new_contradictions", 0)
+
+            base_r = tool_call_reward(
+                tool_name=action_name,
+                new_nodes_discovered=new_nodes,
+                new_contradictions=new_contradictions,
+                is_duplicate_call=is_dup,
+            )
+            raw_r = shaped_step_reward(prev_graph, self.graph, base_r)
+            self._prev_potential = compute_potential(self.graph)
+
+            # Truncate if budget exceeded
+            if self.steps >= self.max_steps:
+                truncated = True
                 self._done = True
                 logger.info("[END] %s truncated at step %d", self.episode_id, self.steps)
-            obs = self._build_obs()
-            return obs, reward, False, truncated, info
 
-        # ── Verdict actions ───────────────────────────────────────────────────
-        if action in VERDICT_ACTIONS:
-            predicted_label = VERDICT_ACTIONS[action]
-            confidence = self._estimate_confidence()
-            terminal_r = verdict_reward(
-                predicted_label=predicted_label,
-                true_label=self.graph.true_label,
-                predicted_confidence=confidence,
-                steps_used=self.steps,
-                max_steps=self.max_steps,
-                manipulation_flagged=self.manipulation_flagged,
-                true_manipulation=self.current_task.has_manipulation(self.graph),
-            )
-            terminal_r += efficiency_penalty(self.steps, self.graph.difficulty)
+            info["raw_reward"] = raw_r
+            reward = float(np.clip(raw_r, config.REWARD_CLIP_MIN, config.REWARD_CLIP_MAX))
 
-            # Policy invariance for terminal states: shaping = 0 - prev_potential
-            terminal_r -= self._prev_potential
+            logger.info("[STEP] %s step=%d action=%s reward=%.4f (raw=%.4f) nodes+=%d",
+                        self.episode_id, self.steps, action_name, reward, raw_r, new_nodes)
 
-            # RL hardening: return raw reward for internal logic, but clip for the Gym interface
-            info["raw_reward"] = terminal_r
-            reward = float(np.clip(terminal_r, config.REWARD_CLIP_MIN, config.REWARD_CLIP_MAX))
-
-            terminated = True
-            self._done = True
-            info.update({
-                "verdict": predicted_label,
-                "true_label": self.graph.true_label,
-                "confidence": confidence,
-                "correct": predicted_label == self.graph.true_label,
-                "total_reward": reward,
-            })
-            logger.info("[END] %s verdict=%s true=%s reward=%.3f",
-                        self.episode_id, predicted_label, self.graph.true_label, reward)
             obs = self._build_obs()
             return obs, reward, terminated, truncated, info
-
-        # ── Tool call actions ─────────────────────────────────────────────────
-        self.steps += 1
-        is_dup = self.tool_call_counts.get(action_name, 0) > 0
-        self.tool_call_counts[action_name] = self.tool_call_counts.get(action_name, 0) + 1
-        self._tool_history[action] = min(self._tool_history[action] + 1, 5.0)
-
-        # Execute tool
-        tool_result = self.tool_registry.call(action_name, self.graph)
-        info["tool_result"] = tool_result
-
-        new_nodes = tool_result.get("new_nodes", 0)
-        new_contradictions = tool_result.get("new_contradictions", 0)
-
-        base_r = tool_call_reward(
-            tool_name=action_name,
-            new_nodes_discovered=new_nodes,
-            new_contradictions=new_contradictions,
-            is_duplicate_call=is_dup,
-        )
-        raw_r = shaped_step_reward(prev_graph, self.graph, base_r)
-        self._prev_potential = compute_potential(self.graph)
-
-        # Truncate if budget exceeded
-        if self.steps >= self.max_steps:
-            truncated = True
-            self._done = True
-            logger.info("[END] %s truncated at step %d", self.episode_id, self.steps)
-
-        info["raw_reward"] = raw_r
-        reward = float(np.clip(raw_r, config.REWARD_CLIP_MIN, config.REWARD_CLIP_MAX))
-
-        logger.info("[STEP] %s step=%d action=%s reward=%.4f (raw=%.4f) nodes+=%d",
-                    self.episode_id, self.steps, action_name, reward, raw_r, new_nodes)
-
-        obs = self._build_obs()
-        return obs, reward, terminated, truncated, info
 
     def close(self) -> None:
         """Explicitly shut down tool registry to prevent resource leaks."""
@@ -286,15 +292,16 @@ class MisInfoForensicsEnv(gym.Env):
 
     def render(self) -> Optional[dict]:
 
-        if self.graph is None:
-            return None
-        state = {
-            "episode_id": self.episode_id,
-            "step": self.steps,
-            "max_steps": self.max_steps,
-            "graph": self.graph.to_dict(),
-            "manipulation_flagged": self.manipulation_flagged,
-        }
+        with self._graph_lock:
+            if self.graph is None:
+                return None
+            state = {
+                "episode_id": self.episode_id,
+                "step": self.steps,
+                "max_steps": self.max_steps,
+                "graph": self.graph.to_dict(),
+                "manipulation_flagged": self.manipulation_flagged,
+            }
         if self.render_mode == "human":
             import json
             print(json.dumps(state, indent=2, default=str))
@@ -313,17 +320,18 @@ class MisInfoForensicsEnv(gym.Env):
         # Build per-node embedding matrix (sorted: root first, then discovered nodes)
         node_embeddings = []
 
-        if self.graph is not None:
-            # Root node always comes first
-            root_emb = self._embed(self.graph.root.text)
-            node_embeddings.append(root_emb)
+        with self._graph_lock:
+            if self.graph is not None:
+                # Root node always comes first
+                root_emb = self._embed(self.graph.root.text)
+                node_embeddings.append(root_emb)
 
-            # Add discovered (retrieved) non-root nodes, ordered by node_id for stability
-            for node_id, node in sorted(self.graph.nodes.items()):
-                if node_id == self.graph.root_claim_id:
-                    continue
-                if node.retrieved and len(node_embeddings) < config.MAX_OBSERVATION_NODES:
-                    node_embeddings.append(self._embed(node.text))
+                # Add discovered (retrieved) non-root nodes, ordered by node_id for stability
+                for node_id, node in sorted(self.graph.nodes.items()):
+                    if node_id == self.graph.root_claim_id:
+                        continue
+                    if node.retrieved and len(node_embeddings) < config.MAX_OBSERVATION_NODES:
+                        node_embeddings.append(self._embed(node.text))
 
         # Zero-pad to MAX_OBSERVATION_NODES
         pad_count = config.MAX_OBSERVATION_NODES - len(node_embeddings)
@@ -333,14 +341,15 @@ class MisInfoForensicsEnv(gym.Env):
         node_matrix = np.concatenate(node_embeddings[:config.MAX_OBSERVATION_NODES])  # (3840,)
 
         budget_remaining = 1.0 - (self.steps / max(self.max_steps, 1))
-        scalars = np.array([
-            self.graph.evidence_coverage if self.graph else 0.0,
-            min(self.graph.source_diversity_entropy / 3.0, 1.0) if self.graph else 0.0,
-            min(self.graph.contradiction_surface_area / 5.0, 1.0) if self.graph else 0.0,
-            float(self.manipulation_flagged),
-            budget_remaining,
-            self.steps / config.MAX_EPISODE_STEPS,
-        ], dtype=np.float32)
+        with self._graph_lock:
+            scalars = np.array([
+                self.graph.evidence_coverage if self.graph else 0.0,
+                min(self.graph.source_diversity_entropy / 3.0, 1.0) if self.graph else 0.0,
+                min(self.graph.contradiction_surface_area / 5.0, 1.0) if self.graph else 0.0,
+                float(self.manipulation_flagged),
+                budget_remaining,
+                self.steps / config.MAX_EPISODE_STEPS,
+            ], dtype=np.float32)
 
         obs = np.concatenate([node_matrix, self._tool_history, scalars])
         return obs.astype(np.float32)
@@ -364,26 +373,74 @@ class MisInfoForensicsEnv(gym.Env):
 
     def _estimate_confidence(self) -> float:
         """Heuristic confidence based on evidence gathered."""
-        if self.graph is None:
-            return 0.5
-        cov = self.graph.evidence_coverage
-        contra = min(self.graph.contradiction_surface_area / 3.0, 1.0)
-        return min(0.5 + 0.3 * cov + 0.2 * contra, 0.99)
+        with self._graph_lock:
+            if self.graph is None:
+                return 0.5
+            cov = self.graph.evidence_coverage
+            contra = min(self.graph.contradiction_surface_area / 3.0, 1.0)
+            return min(0.5 + 0.3 * cov + 0.2 * contra, 0.99)
 
     def get_episode_summary(self) -> dict:
-        if self.graph is None:
-            return {}
-        return {
-            "episode_id": self.episode_id,
-            "task_id": self.current_task.task_id if self.current_task else None,
-            "difficulty": self.difficulty,
-            "steps_used": self.steps,
-            "max_steps": self.max_steps,
-            "evidence_coverage": self.graph.evidence_coverage,
-            "source_diversity": self.graph.source_diversity_entropy,
-            "contradictions_found": self.graph.contradiction_surface_area,
-            "manipulation_flagged": self.manipulation_flagged,
-        }
+        with self._graph_lock:
+            if self.graph is None:
+                return {}
+            return {
+                "episode_id": self.episode_id,
+                "task_id": self.current_task.task_id if self.current_task else None,
+                "difficulty": self.difficulty,
+                "steps_used": self.steps,
+                "max_steps": self.max_steps,
+                "evidence_coverage": self.graph.evidence_coverage,
+                "source_diversity": self.graph.source_diversity_entropy,
+                "contradictions_found": self.graph.contradiction_surface_area,
+                "manipulation_flagged": self.manipulation_flagged,
+            }
+
+    @contextmanager
+    def graph_lock(self):
+        with self._graph_lock:
+            yield
+
+    def has_graph(self) -> bool:
+        with self._graph_lock:
+            return self.graph is not None
+
+    def get_graph_root_info(self) -> Tuple[str, str, float]:
+        with self._graph_lock:
+            if self.graph is None:
+                return "", "unknown", 0.5
+            root = self.graph.root
+            return (
+                getattr(root, "text", ""),
+                getattr(root, "domain", "unknown"),
+                getattr(root, "virality_score", 0.5),
+            )
+
+    def get_graph_metrics(self) -> Tuple[float, float, int]:
+        with self._graph_lock:
+            if self.graph is None:
+                return 0.0, 0.0, 0
+            return (
+                float(getattr(self.graph, "evidence_coverage", 0.0)),
+                float(getattr(self.graph, "source_diversity_entropy", 0.0)),
+                int(getattr(self.graph, "contradiction_surface_area", 0)),
+            )
+
+    def get_graph_stats(self) -> Optional[Tuple[int, int, float, int]]:
+        with self._graph_lock:
+            if self.graph is None:
+                return None
+            retrieved = sum(1 for n in self.graph.nodes.values() if n.retrieved)
+            total = len(self.graph.nodes)
+            cov = float(getattr(self.graph, "evidence_coverage", 0.0))
+            con = int(getattr(self.graph, "contradiction_surface_area", 0))
+            return retrieved, total, cov, con
+
+    def get_graph_true_label(self) -> str:
+        with self._graph_lock:
+            if self.graph is None:
+                return "unknown"
+            return getattr(self.graph, "true_label", "unknown")
 
     @staticmethod
     def parse_observation(obs: np.ndarray) -> dict:
@@ -403,6 +460,9 @@ class MisInfoForensicsEnv(gym.Env):
           - step_ratio: float 0-1
         """
         embed_dim = config.MAX_OBSERVATION_NODES * config.CLAIM_EMBED_DIM
+        expected = embed_dim + N_ACTIONS + 6
+        if obs.shape[0] != expected:
+            raise ValueError(f"Invalid observation length: {obs.shape[0]} (expected {expected})")
         tool_history = obs[embed_dim: embed_dim + N_ACTIONS]
         scalar_start = embed_dim + N_ACTIONS
         return {

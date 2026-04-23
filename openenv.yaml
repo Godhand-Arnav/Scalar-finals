@@ -1,8 +1,9 @@
-name: forge
-version: 1.0.0
-description: "FORGE: Forensic RL Graph Environment for Misinformation Investigation"
+name: forge-ma
+version: 2.0.0
+description: "FORGE-MA: Multi-Agent Forensic RL Graph Environment for Misinformation Investigation (v2 - hierarchical multi-agent, co-evolutionary self-play)"
 author: "FORGE Team"
-tags: [openenv]
+tags: [openenv, multi-agent, self-play, misinformation]
+
 tasks:
   - id: fabricated_stats
     difficulty: easy
@@ -46,9 +47,11 @@ endpoints:
     path: /rewards/schema
     method: GET
 observation_space:
-  type: Box
-  shape: [3859]
-  dtype: float32
+  type: Dict
+  keys:
+    claim_embed: {type: Box, shape: [384], dtype: float32}
+    tool_history: {type: Box, shape: [13], dtype: float32}
+    scalars: {type: Box, shape: [6], dtype: float32}
 action_space:
   type: Discrete
   n: 13

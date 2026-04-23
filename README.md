@@ -1,215 +1,111 @@
+<div align="center">
+
+# 🛡️ FORGE: Unified Misinformation Forensics Platform
+**v2.1** — *Adversarial Multi-Agent Reinforcement Learning Edition*
+
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Meta × HuggingFace](https://img.shields.io/badge/Hackathon-OpenEnv_Round_2-blueviolet.svg)](#)
+
+*Fact-checking isn't just classification. It's an investigation.*
+
+</div>
+
 ---
-title: FORGE Misinformation RL
-colorFrom: green
-colorTo: blue
-sdk: gradio
-pinned: true
-tags:
-  - openenv
-  - reinforcement-learning  
-  - misinformation
-  - fact-checking
-  - trust-and-safety
-  - graph-neural-network
-  - content-moderation
+
+## 📖 Overview
+
+**FORGE** (Forensic Operation & Research Graph Environment) bridges the gap between simple true/false classification and authentic human investigative processes. By modeling fact-checking as a sequential investigation across a dynamic toolset, FORGE sets a new standard for AI-driven forensics.
+
+**FORGE v2.1** merges our foundational Gymnasium environment with our state-of-the-art **Multi-Agent Society of Thought**, introducing a revolutionary **Multi-Provider Agent Architecture** that eliminates shared-model bias and introduces adversarial curriculum learning.
+
+| Core System | Functionality |
+|---|---|
+| **FORGE The Engine**<br>`env/misinfo_env.py` | Production-grade Gymnasium environment supporting 8 forensic task types, a comprehensive tool registry, a Graph Neural Network (GNN) policy, and PPO training. |
+| **FORGE-MA The Brain**<br>`env/forge_env.py` | Adversarial multi-agent extension featuring a Red Team (Hierarchical Adversarial Encoder) vs. a Blue Team (Society of Thought + Graph Isomorphism Network), optimized via hierarchical reward shaping. |
+
 ---
 
-# FORGE: Forensic RL Graph Environment
+## 🧠 The Multi-Provider Moat
 
-> Train and evaluate agents that investigate misinformation the way 
-> human fact-checkers actually do — sequentially, under time pressure, 
-> with incomplete information.
+To prevent homogeneous reasoning loops and shared training data biases, FORGE-MA implements a **zero-shared-bias architecture**. Each specialized agent role is powered by a different frontier AI provider.
 
-> [Why FORGE matters for real-world content moderation →](REAL_WORLD_IMPACT.md)
-
-## The Problem FORGE Solves
-
-Content moderation at scale faces a fundamental tension: human 
-fact-checkers are accurate but slow; automated classifiers are fast 
-but shallow. Neither approach models the **investigative process** 
-that experienced Trust & Safety engineers use.
-
-FORGE bridges this gap. It frames fact-checking as a sequential 
-decision problem where an agent must:
-
-- Choose which forensic tool to apply at each step
-- Build a structured evidence graph from tool results  
-- Submit a verdict under a tight step budget
-
-An agent trained on FORGE learns **investigation policies** — not 
-just classification boundaries. It learns that some claims require 
-source verification first; others require timeline analysis; others 
-require bot network detection. This mirrors how real content 
-moderation teams triage and escalate content.
-
-**Immediate applications:**
-- Training automated triage systems for content moderation pipelines
-- Benchmarking LLMs on structured investigative reasoning
-- Studying how investigation strategies transfer across misinformation types
-- Evaluating whether agents can prioritise the right tools under budget constraints
-
-## Environment
-
-**Observation** — `Box(3859,)` float32:
-```text
-[0:3840]     Sentence embeddings of up to 10 discovered claim graph nodes
-[3840:3853]  Tool usage history (call counts per action)
-[3853:3859]  Graph scalars: coverage, diversity, contradictions, manipulation_flag, budget_remaining, steps_ratio
-```
-
-**Actions** — `Discrete(13)`:
-```text
-Investigation tools (0-7):
-0  query_source      Domain credibility check
-1  trace_origin      Wayback Machine / propagation tracing
-2  cross_reference   Wikipedia / encyclopedia verification
-3  request_context   LLM structural summarisation
-4  entity_link       Wikidata entity disambiguation
-5  temporal_audit    Timestamp anomaly detection
-6  network_cluster   Bot network / coordination detection
-7  flag_manipulation Free action — tag adversarial intent
-
-Verdicts (8-12):
-8   submit_verdict_real
-9   submit_verdict_misinfo
-10  submit_verdict_satire
-11  submit_verdict_out_of_context
-12  submit_verdict_fabricated
-```
-
-**Reward** — Dense, potential-based shaped reward (Ng et al., 1999):
-```text
-Step reward:    r = base + γΦ(s') − Φ(s)
-Terminal:       correctness + calibration bonus + efficiency bonus + manipulation detection component
-Range:          (0.001, 0.999) — strictly open interval
-```
-
-## Tasks
-
-| Task | Difficulty | Domain | Required Tools | Real Data |
-|---|---|---|---|---|
-| `fabricated_stats` | Easy | Science/Health | entity_link, cross_reference | No |
-| `verified_fact` | Easy | Control | cross_reference, entity_link | No |
-| `out_of_context` | Medium | Media/Images | trace_origin, temporal_audit | No |
-| `politifact_liar` | Medium | Politics | cross_reference, entity_link | **LIAR dataset** |
-| `satire_news` | Medium | Journalism | request_context, cross_reference | No |
-| `coordinated_campaign` | Hard | Social Networks | network_cluster, query_source | No |
-| `image_forensics` | Hard | Multimodal | temporal_audit, trace_origin | No |
-| `sec_fraud` | Hard | Finance/SEC | cross_reference, entity_link | No |
-
-Each task has a deterministic grader that awards partial credit for 
-correct tool usage independently of verdict correctness — providing 
-dense signal across the full trajectory.
-
-## Adversarial Self-Play
-
-FORGE includes a GAN-inspired co-evolutionary training regime:
-Generator Agent  →  crafts misinformation designed to evade detection
-Investigator     →  learns to detect the generator's output
-↑                              ↓
-└──── mutual improvement loop ─┘
-
-This mirrors the real-world dynamic where bad actors continuously 
-adapt their techniques to evade detection systems. Unlike static 
-datasets, FORGE's adversarial curriculum generates novel, 
-increasingly sophisticated misinformation patterns.
-
-```bash
-python scripts/run_selfplay.py --rounds 10 --difficulty 3
-```
-
-## Quick Start
-
-```bash
-# Install
-git clone https://github.com/Harshal1841A/Forge-RL.git
-pip install -r requirements.txt
-
-# Run offline evaluation (no API key needed)
-python inference.py --episodes 2
-
-# Run with LLM agent
-HF_TOKEN=your_groq_key python inference.py --episodes 2
-
-# Start server
-docker build -t forge . && docker run -p 7860:7860 forge
-```
-
-## API
-
-```bash
-# Start episode
-curl -X POST /reset \
-  -d '{"task_name": "coordinated_campaign", "difficulty": 2}'
-
-# Investigate
-curl -X POST /step -d '{"action": 6}'  # network_cluster
-
-# Check what was found
-# Response includes info.hint with plain-English guidance for LLM agents
-
-# Submit verdict
-curl -X POST /step -d '{"action": 9}'  # submit_verdict_misinfo
-
-# Get graded score
-curl /episodes/{id}/grade
-```
-
-## Baseline Results
-
-| Task | Difficulty | Heuristic | LLM (Groq) |
+| Forensic Role | AI Provider | Selected Model | Strategic Advantage |
 |---|---|---|---|
-| fabricated_stats | Easy | ~35% | ~70% |
-| verified_fact | Easy | ~45% | ~80% |
-| out_of_context | Medium | ~30% | ~65% |
-| politifact_liar | Medium | ~25% | ~60% |
-| satire_news | Medium | ~30% | ~65% |
-| coordinated_campaign | Hard | ~40% | ~85% |
-| image_forensics | Hard | ~20% | ~75% |
-| sec_fraud | Hard | ~25% | ~68% |
+| **Forensic Auditor** | 🟣 Groq | `llama3-70b-8192` | Unparalleled factual and source reasoning. |
+| **Context Historian** | 🔵 Cerebras | `llama3.1-70b` | High-speed temporal and provenance detection. |
+| **Narrative Critic** | 🟠 Mistral | `mistral-small-latest` | Exceptional at decoding narrative style and satire. |
+| **NegotiatedSearch** | 🟢 OpenRouter | `llama-3-8b:free` | Ultra-fast tool-selection and routing pre-pass. |
 
-## Design Decisions
+> **Unanimous Consensus:** A verdict flagged by all four distinct providers represents a rigorously cross-validated, high-confidence conclusion.
+> 
+> *Note: All configured providers offer generous free tiers. The system gracefully degrades to deterministic mock fallbacks if API keys are missing, ensuring uninterrupted execution.*
 
-**Why graph-based observation?** Misinformation investigation is 
-inherently relational — the same claim means different things 
-depending on who is amplifying it, when it appeared, and what 
-authoritative sources say. A flat observation cannot capture this 
-structure. FORGE maintains an explicit `ClaimGraph` where nodes 
-are sources and edges represent support/contradiction/amplification 
-relationships.
+---
 
-**Why potential-based shaping?** Binary terminal rewards provide 
-no learning signal until the final step. Potential-based shaping 
-(Ng et al., 1999) provides dense step-level rewards that are 
-guaranteed policy-invariant — the optimal policy under the shaped 
-reward is identical to the optimal policy under the sparse reward.
+## 🏗️ System Architecture
 
-**Why 5 verdict classes?** Binary real/fake classification is 
-insufficient for real content moderation. FORGE distinguishes 
-between fabricated (entirely made up), out_of_context (real content 
-wrong context), satire (intentional parody), misinfo (false claims), 
-and real — matching the taxonomy used by professional fact-checkers.
+### The Blue Team: Society of Thought
+Our defensive mechanism relies on a consensus-driven approach, combining large language models with specialized graph-based reasoning.
 
-## Architecture
-```text
-FORGE/
-├── env/
-│   ├── misinfo_env.py      Gymnasium-compatible environment
-│   ├── claim_graph.py      Evidence graph data structure
-│   ├── reward.py           Potential-based reward shaping
-│   └── tasks/              8 task generators + programmatic graders
-├── agents/
-│   ├── llm_agent.py        FSM-constrained ReAct LLM agent
-│   ├── heuristic_agent.py  Deterministic baseline (offline)
-│   ├── ppo_agent.py        PPO training agent
-│   └── adversarial/        GAN-style self-play agents
-├── tools/                  Forensic tool implementations
-│   ├── query_source.py     Wikipedia + DuckDuckGo
-│   ├── trace_origin.py     Wayback Machine + Wikidata
-│   ├── cross_reference.py  Wikipedia multi-article
-│   ├── entity_link.py      Wikidata SPARQL
-│   ├── temporal_audit.py   Wayback timestamp verification
-│   └── network_cluster.py  Graph-based bot detection
-├── server/                 FastAPI OpenEnv REST API
-└── inference.py            OpenEnv evaluation script
+*   **Forensic Auditor [Groq]:** Leads the core investigation.
+*   **Context Historian [Cerebras]:** Analyzes the temporal framing of claims.
+*   **Narrative Critic [Mistral]:** Evaluates the stylistic and rhetorical features.
+*   **Graph Specialist [BlueGIN]:** A 2-layer Graph Isomorphism Network (SUM pooling, 64-dim) that processes the evolving evidence topology.
+
+### The Red Team: Adversarial Generation
+*   **HAE Adversary:** A Hierarchical Adversarial Encoder (MEAN pooling, 32-dim) paired with an Action Validator, designed to intelligently mutate claims and evade detection.
+
+### Hierarchical Reward Shaper
+Our sophisticated reward function incentivizes precise and efficient investigations:
+*   `TED × 0.40`: Tactic chain edit distance (closeness to truth).
+*   `F1 × 0.30`: Tactic precision/recall.
+*   `PLB × 0.20`: Plausibility delta.
+*   `Consensus & Expert Bonuses`: Rewards for unanimous cross-model agreement.
+*   `Budget Penalty`: Enforces efficiency ($-0.01$/step, heavily penalized if over-budget).
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Installation
+
+Install the core dependencies:
+```bash
+pip install -r requirements.txt
 ```
+
+*(Optional)* Install FORGE-MA GPU packages for advanced training:
+```bash
+pip install torch-geometric trl stix2
+```
+
+### 2. Configuration
+Copy the environment template and configure your free API keys:
+```bash
+cp .env.example .env
+# Edit .env with your provider keys
+```
+
+### 3. Launch the Dashboard
+Start the unified Gradio UI (access both FORGE v1 and FORGE-MA interfaces):
+```bash
+python app.py
+```
+*The dashboard will be available at `http://localhost:7860`.*
+
+### 4. Testing
+Run the comprehensive test suites to verify integrity:
+```bash
+# Run core FORGE v1 tests
+python -m pytest tests/test_graders.py -v
+
+# Run the full FORGE-MA adversarial test suite (126 cases)
+python -m pytest tests/forge_ma -v
+```
+
+---
+
+<div align="center">
+<i>Built with 🛡️ for a more truthful web.</i>
+</div>
