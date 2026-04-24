@@ -295,9 +295,12 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     ];
 
     let step = 0;
+    if ((window as any)._demoInterval) clearInterval((window as any)._demoInterval);
+
     const interval = setInterval(() => {
       if (step >= demoSequence.length) {
         clearInterval(interval);
+        (window as any)._demoInterval = null;
         set((state) => ({
           status: "OPTIMAL",
           done: true,

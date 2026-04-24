@@ -10,6 +10,13 @@ from env.misinfo_env import MisInfoForensicsEnv
 
 router = APIRouter()
 
+# Task score must stay strictly between 0 and 1.
+TASK_SCORE_MIN = 0.001
+TASK_SCORE_MAX = 0.999
+
+def _clip_open_interval(value: float) -> float:
+    return float(max(TASK_SCORE_MIN, min(TASK_SCORE_MAX, float(value))))
+
 # In-memory grade log for leaderboard (replace with DB in production)
 GRADE_LOG: List[dict] = []
 
@@ -64,7 +71,7 @@ async def get_grade(episode_id: str):
     coverage = graph.evidence_coverage if graph else 0.0
 
     # Grade breakdown
-    base_score = 0.999 if correct else 0.001
+    base_score = TASK_SCORE_MAX if correct else TASK_SCORE_MIN
     efficiency_score = round(efficiency * 0.2, 4)
     coverage_score = round(coverage * 0.1, 4)
     manip_score = 0.1 if (
@@ -77,17 +84,18 @@ async def get_grade(episode_id: str):
     import numpy as np
     total = round(float(np.clip(
         base_score + efficiency_score + coverage_score + manip_score + fp_penalty,
-        0.001, 0.999
+        TASK_SCORE_MIN, TASK_SCORE_MAX
     )), 4)
 
     # Run programmatic task grader for additional signal
     episode_trace = record.get("episode_trace", [])
-    task_grade = 0.001
+    task_grade = TASK_SCORE_MIN
     if task and graph and episode_trace:
         try:
             task_grade = task.grade(episode_trace, graph)
         except Exception:
             task_grade = total  # fall back to reward-based score
+    task_grade = _clip_open_interval(task_grade)
 
     grade_breakdown = {
         "base_correctness": base_score,
@@ -98,7 +106,7 @@ async def get_grade(episode_id: str):
         "composite_score": total,
         "task_grader_score": task_grade,
         "combined_score": round(float(
-            np.clip(0.6 * total + 0.4 * task_grade, 0.001, 0.999)
+            np.clip(0.6 * total + 0.4 * task_grade, TASK_SCORE_MIN, TASK_SCORE_MAX)
         ), 4),
     }
 

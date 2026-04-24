@@ -140,7 +140,7 @@ export function CustomCursor() {
         style={{ x: mouseX, y: mouseY, translateX: "-50%", translateY: "-50%" }}
       >
         <motion.div
-          className="w-2 h-2 rounded-full"
+          className="w-2 h-2 rounded-full animate-aurora"
           animate={{
             backgroundColor: [
               "#06b6d4", "#34d399", "#a78bfa", "#f472b6", "#06b6d4",
