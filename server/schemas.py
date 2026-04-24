@@ -51,7 +51,7 @@ class Observation(BaseModel):
     vector: List[float] = Field(..., description="Flat observation vector, length 3859")
     claim_text: str = Field(default="")
     evidence_coverage: float = Field(default=0.0, ge=0.0, le=1.0)
-    source_diversity: float = Field(default=0.0, ge=0.0, le=1.0)
+    source_diversity: float = Field(default=0.0, ge=0.0)
     contradiction_count: int = Field(default=0, ge=0)
     manipulation_flagged: bool = Field(default=False)
     budget_remaining: float = Field(default=1.0, ge=0.0, le=1.0)
