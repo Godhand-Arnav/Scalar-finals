@@ -37,7 +37,7 @@ export function Navbar() {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="px-5 py-2.5 rounded-full bg-white text-black text-sm font-semibold shadow-md active:shadow-sm transition-all"
+            className="btn-forge-primary px-5 py-2 text-sm"
           >
             Get Started
           </motion.button>

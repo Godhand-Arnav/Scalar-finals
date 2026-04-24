@@ -133,7 +133,7 @@ export function DashboardPreviewSection() {
           {/* Main panel */}
           <motion.div variants={scaleUp} className="w-full flex justify-center">
             <motion.div
-              className="relative w-full rounded-[24px] overflow-hidden bg-slate-950/30 backdrop-blur-[40px] border border-white/10 shadow-2xl"
+              className="relative w-full rounded-[24px] overflow-hidden glass-dark scanlines shadow-2xl"
             >
               {/* Chrome bar */}
               <div className="h-14 border-b border-white/8 flex items-center px-6 justify-between bg-black/20 gap-4">
@@ -163,7 +163,7 @@ export function DashboardPreviewSection() {
                     whileHover={{ scale: 1.04, boxShadow: "0 0 20px rgba(0,255,255,0.3)" }} whileTap={{ scale: 0.96 }}
                     onClick={isDone ? reset : launch}
                     disabled={isRunning || !serverOnline}
-                    className="bg-gradient-to-r from-cyan-500 to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-4 py-1.5 rounded-full border border-cyan-400/40 flex items-center gap-1.5 text-xs transition-all shrink-0"
+                    className="btn-forge-primary disabled:opacity-50 disabled:cursor-not-allowed px-4 py-1.5 flex items-center gap-1.5 text-xs transition-all shrink-0"
                   >
                     <Zap className="w-3 h-3" />
                     {isRunning ? "Analysing…" : isDone ? "New Run" : serverOnline ? "Launch" : "Offline"}
@@ -172,7 +172,7 @@ export function DashboardPreviewSection() {
                     whileHover={{ scale: 1.04, boxShadow: "0 0 20px rgba(236,72,153,0.3)" }} whileTap={{ scale: 0.96 }}
                     onClick={runDemoMode}
                     disabled={isRunning}
-                    className="bg-black/40 text-pink-400 font-bold px-3 py-1.5 rounded-full border border-pink-500/30 flex items-center gap-1.5 text-xs transition-all shrink-0 hover:bg-pink-500/10"
+                    className="btn-forge-secondary text-pink-400 px-3 py-1.5 flex items-center gap-1.5 text-xs transition-all shrink-0 hover:bg-pink-500/10 hover:border-pink-500/30"
                   >
                     <Zap className="w-3 h-3" />
                     Quick Demo
@@ -214,7 +214,7 @@ export function DashboardPreviewSection() {
                               <div className={`w-2.5 h-2.5 rounded-full ${isDone && idx === logs.length - 1 ? "bg-fuchsia-400 shadow-[0_0_8px_rgba(255,0,170,0.8)]" : (ACTION_COLORS[log.action] ?? "bg-slate-500")} shadow-[0_0_8px_rgba(0,245,255,0.5)]`} />
                               {idx < logs.length - 1 && <div className="w-px flex-1 bg-gradient-to-b from-white/15 to-transparent mt-1" />}
                             </div>
-                            <div className="flex-1 bg-slate-950/30 backdrop-blur-[40px] border border-white/10 rounded-[16px] p-3 shadow-2xl">
+                            <div className="flex-1 glass-panel rounded-[16px] p-3 shadow-2xl">
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                   <span className={`text-[8px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
@@ -258,7 +258,7 @@ export function DashboardPreviewSection() {
                   </div>
 
                   {/* Status orb */}
-                  <div className="bg-slate-950/30 backdrop-blur-[40px] border border-white/10 rounded-[24px] p-4 flex items-center gap-4 shadow-2xl">
+                  <div className="glass-panel rounded-[24px] p-4 flex items-center gap-4 shadow-2xl">
                     <div className="relative shrink-0">
                       <div className="w-14 h-14 rounded-full border border-cyan-500/20 flex items-center justify-center">
                         <AnimatePresence>
@@ -289,7 +289,7 @@ export function DashboardPreviewSection() {
                       { label: "STEPS", value: `${stepsUsed}` },
                       { label: "REWARD", value: totalReward.toFixed(3) },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-slate-950/30 backdrop-blur-[40px] border border-white/10 rounded-[16px] p-3 text-center shadow-2xl">
+                      <div key={label} className="glass-panel rounded-[16px] p-3 text-center shadow-2xl">
                         <motion.p key={value} initial={{ scale: 1.2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                           className="text-xl font-black text-white tabular-nums">{value}</motion.p>
                         <p className="text-[9px] text-cyan-500 tracking-widest mt-0.5">{label}</p>
@@ -298,7 +298,7 @@ export function DashboardPreviewSection() {
                   </div>
 
                   {/* Bars */}
-                  <div className="bg-slate-950/30 backdrop-blur-[40px] border border-white/10 rounded-[24px] p-4 flex flex-col gap-4 shadow-2xl">
+                  <div className="glass-panel rounded-[24px] p-4 flex flex-col gap-4 shadow-2xl">
                     {[
                       { label: "Pressure", value: Math.min(pressure, 1), color: "from-cyan-500 to-purple-500" },
                       { label: "Uncertainty", value: Math.min(uncertainty, 1), color: "from-fuchsia-500 to-pink-500" },
@@ -317,7 +317,7 @@ export function DashboardPreviewSection() {
                   </div>
 
                   {/* Evidence graph / Grade */}
-                  <div className="bg-slate-950/30 backdrop-blur-[40px] border border-white/10 rounded-[24px] p-4 flex flex-col gap-3 shadow-2xl flex-1">
+                  <div className="glass-panel rounded-[24px] p-4 flex flex-col gap-3 shadow-2xl flex-1">
                     <span className="text-[10px] font-bold text-cyan-500 tracking-widest">
                       {grade ? "FINAL GRADE" : "EVIDENCE GRAPH"}
                     </span>
@@ -360,7 +360,7 @@ export function DashboardPreviewSection() {
 
           {/* Bottom Panel: Multi-Agent Visualization + Stats */}
           <motion.div variants={slideUp} className="w-full flex justify-center mt-2">
-            <div className="w-full rounded-[24px] overflow-hidden bg-slate-950/30 backdrop-blur-[40px] border border-white/10 shadow-2xl p-6 flex flex-col gap-6">
+            <div className="w-full rounded-[24px] overflow-hidden glass-panel shadow-2xl p-6 flex flex-col gap-6">
 
               {/* Agent Activity Row */}
               <div>
@@ -556,7 +556,7 @@ export function DashboardPreviewSection() {
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[9px] font-bold text-cyan-500 tracking-widest">DEPTH</span>
               <input type="range" min={1} max={4} step={1} value={depth} onChange={(e) => setDepth(Number(e.target.value))}
-                className="w-16 h-1 bg-black/40 rounded-full appearance-none cursor-pointer accent-cyan-500" />
+                className="w-16 h-1 bg-black/40 rounded-full appearance-none cursor-pointer" />
               <span className="text-[10px] font-mono text-white/60 w-3 text-center">{depth}</span>
             </div>
             <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
