@@ -25,6 +25,37 @@ export interface LogEntry {
 // ─── Status ───────────────────────────────────────────────────────────────────
 export type AgentStatus = "IDLE" | "ACTIVE" | "OPTIMAL" | "ERROR";
 
+// ─── Tool log entry (for live claim / fallback mode) ─────────────────────────
+export interface ToolLogEntry {
+  tool: string;
+  finding: string;
+  primitive: string | null;
+}
+
+// ─── Society vote shape ───────────────────────────────────────────────────────
+export interface SocietyVote {
+  verdict: string;
+  chain: string[];
+  confidence: number;
+}
+
+// ─── Full episode data shape (fallback + live claim) ─────────────────────────
+export interface EpisodeData {
+  claim: string;
+  trueChain: string[];
+  predictedChain: string[];
+  ted: number;
+  verdict: string;
+  verdictCorrect: boolean;
+  expertDecision: string;
+  expertFeedback: string;
+  recommendedAction: string;
+  societyVotes: Record<string, SocietyVote>;
+  toolLog: ToolLogEntry[];
+  gnnNodeImportance: Record<string, number>;
+  stix2Preview?: string;
+}
+
 // ─── Store shape ──────────────────────────────────────────────────────────────
 interface ForgeState {
   // Server info
@@ -59,7 +90,26 @@ interface ForgeState {
   // Error
   error: string | null;
 
-  // ─── Actions ────────────────────────────────────────────────────────────
+  // ── Live claim input ────────────────────────────────────────────────────────
+  liveClaim: string;
+  liveClaimLoading: boolean;
+  liveClaimError: string | null;
+
+  // ── Demo fallback ───────────────────────────────────────────────────────────
+  isFallbackMode: boolean;
+  fallbackEpisode: EpisodeData | null;
+  apiFailureCount: number;
+
+  // ── Extended episode state (populated by fallback / live claim) ─────────────
+  currentClaim: string | null;
+  currentTed: number | null;
+  toolLog: ToolLogEntry[];
+  societyVotes: Record<string, SocietyVote>;
+  expertDecision: string | null;
+  predictedChain: string[];
+  gnnNodeImportance: Record<string, number>;
+
+  // ─── Actions ────────────────────────────────────────────────────────────────
   init: () => Promise<void>;
   setSelectedTask: (name: string) => void;
   setDepth: (d: number) => void;
@@ -69,7 +119,58 @@ interface ForgeState {
   fetchStats: () => Promise<void>;
   reset: () => void;
   runDemoMode: () => void;
+
+  // Live claim actions
+  setLiveClaim: (claim: string) => void;
+  submitLiveClaim: () => Promise<void>;
+  activateFallback: () => void;
+  resetFallback: () => void;
 }
+
+// ─── Pre-recorded Plandemic fallback episode ──────────────────────────────────
+const PLANDEMIC_FALLBACK: EpisodeData = {
+  claim: "Plandemic documentary: Dr. Fauci patented the coronavirus and suppressed treatments to profit from vaccines.",
+  trueChain: ["SOURCE_LAUNDER", "QUOTE_FABRICATE", "ENTITY_SUBSTITUTE", "NETWORK_AMPLIFY"],
+  predictedChain: ["SOURCE_LAUNDER", "QUOTE_FABRICATE", "ENTITY_SUBSTITUTE", "NETWORK_AMPLIFY"],
+  ted: 0.94,
+  verdict: "fabricated",
+  verdictCorrect: true,
+  expertDecision: "APPROVE",
+  expertFeedback: "All 4 tactics identified. Bot network confirmed via network_cluster. Recommended for enforcement.",
+  recommendedAction: "REMOVE",
+  societyVotes: {
+    forensicAuditor:  { verdict: "fabricated", chain: ["SOURCE_LAUNDER", "ENTITY_SUBSTITUTE"], confidence: 0.91 },
+    contextHistorian: { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "CONTEXT_STRIP"],    confidence: 0.87 },
+    graphSpecialist:  { verdict: "fabricated", chain: ["NETWORK_AMPLIFY", "SOURCE_LAUNDER"],   confidence: 0.95 },
+    narrativeCritic:  { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "SATIRE_REFRAME"],   confidence: 0.82 },
+  },
+  toolLog: [
+    { tool: "query_source",    finding: "marketpulse.net trust=0.12 — suspicious",         primitive: "SOURCE_LAUNDER"    },
+    { tool: "trace_origin",    finding: "Intermediate domain marketpulse.net detected",     primitive: "SOURCE_LAUNDER"    },
+    { tool: "entity_link",     finding: "CDC replaced by NIAID — entity substitution",      primitive: "ENTITY_SUBSTITUTE" },
+    { tool: "quote_search",    finding: "Fauci quote not found in any verified source",     primitive: "QUOTE_FABRICATE"   },
+    { tool: "network_cluster", finding: "47 coordinated bot accounts amplifying claim",     primitive: "NETWORK_AMPLIFY"   },
+    { tool: "cross_reference", finding: "PolitiFact PANTS ON FIRE, FactCheck.org FALSE",   primitive: null                },
+    { tool: "temporal_audit",  finding: "Patent application 4yr before claim date",         primitive: "TEMPORAL_SHIFT"    },
+  ],
+  gnnNodeImportance: {
+    "marketpulse.net":   0.94,
+    "niaid.nih.gov":     0.87,
+    "fauci_quote_fake":  0.91,
+    "bot_cluster_1":     0.88,
+    "root_claim":        0.72,
+    "politifact":        0.31,
+  },
+  stix2Preview: `{
+  "type": "bundle",
+  "objects": [
+    {"type": "attack-pattern", "name": "SOURCE_LAUNDER", "x_mitre_id": "T0013.001"},
+    {"type": "attack-pattern", "name": "QUOTE_FABRICATE", "x_mitre_id": "T0006"},
+    {"type": "threat-actor",   "name": "bot_cluster_47_accounts"},
+    {"type": "campaign",       "name": "Plandemic_CIB_2020"}
+  ]
+}`,
+};
 
 // ─── Action name → human label mapping ───────────────────────────────────────
 const ACTION_LABELS: Record<string, string> = {
@@ -100,14 +201,14 @@ function makeLog(actionName: string, reward?: number, obs?: TypedObservation): L
     if (actionName === "entity_link") text = `Linked ${Math.round(obs.source_diversity * 3 + 2)} named entities → Wikidata`;
     if (actionName === "cross_reference") text = `Retrieved ${Math.round(obs.evidence_coverage * 10 + 1)} similar DB cases`;
   }
-  
+
   let agent: "Blue Team" | "Red Team" | "Orchestrator" = "Blue Team";
   if (actionName === "init" || actionName.startsWith("submit_verdict")) {
     agent = "Orchestrator";
   } else if (["flag_manipulation", "network_cluster", "trace_origin"].includes(actionName)) {
     agent = "Red Team";
   }
-  
+
   return { id: ++_logCounter, action: actionName, text, ts, reward, agent };
 }
 
@@ -132,7 +233,26 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   grading: false,
   error: null,
 
-  // ── init: check health + load tasks & actions ──────────────────────────
+  // Live claim
+  liveClaim: "",
+  liveClaimLoading: false,
+  liveClaimError: null,
+
+  // Fallback
+  isFallbackMode: false,
+  fallbackEpisode: null,
+  apiFailureCount: 0,
+
+  // Extended episode state
+  currentClaim: null,
+  currentTed: null,
+  toolLog: [],
+  societyVotes: {},
+  expertDecision: null,
+  predictedChain: [],
+  gnnNodeImportance: {},
+
+  // ── init: check health + load tasks & actions ──────────────────────────────
   init: async () => {
     try {
       const [health, tasksRes, actionsRes] = await Promise.all([
@@ -146,7 +266,6 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         actions: actionsRes.actions,
         error: null,
       });
-      // also fetch initial stats
       await get().fetchStats();
     } catch {
       set({ serverOnline: false, error: "Backend offline — start the FORGE server (port 7860)." });
@@ -156,7 +275,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   setSelectedTask: (name) => set({ selectedTaskName: name }),
   setDepth: (d) => set({ depth: d }),
 
-  // ── launch: POST /reset → start new episode ────────────────────────────
+  // ── launch: POST /reset → start new episode ───────────────────────────────
   launch: async () => {
     const { selectedTaskName, agentId } = get();
     _logCounter = 0;
@@ -165,7 +284,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       const res = await forge.reset({
         task_name: selectedTaskName,
         agent_id: agentId,
-        use_live_tools: true,  // enable real API calls: Wayback, Wikidata, Wikipedia
+        use_live_tools: true,
       });
       const initLog: LogEntry = {
         id: 1,
@@ -176,7 +295,6 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       };
       set({ episodeId: res.episode_id, logs: [initLog], launching: false });
 
-      // Fetch initial state for observation data
       const stateRes = await forge.state(res.episode_id);
       set({ observation: stateRes.typed_observation });
     } catch (e) {
@@ -184,7 +302,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     }
   },
 
-  // ── takeAction: POST /step → execute one agent action ─────────────────
+  // ── takeAction: POST /step → execute one agent action ─────────────────────
   takeAction: async (actionIndex: number) => {
     const { episodeId, actions, done } = get();
     if (!episodeId || done) return;
@@ -193,7 +311,6 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     try {
       const stepRes = await forge.step({ action: actionIndex, episode_id: episodeId });
 
-      // Refresh state for typed observation
       const stateRes = await forge.state(episodeId);
       const obs = stateRes.typed_observation;
 
@@ -206,7 +323,6 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         status: stepRes.done ? "OPTIMAL" : "ACTIVE",
       }));
 
-      // Auto-grade when done
       if (stepRes.done) {
         await get().fetchGrade();
       }
@@ -215,7 +331,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     }
   },
 
-  // ── fetchGrade: GET /episodes/{id}/grade ───────────────────────────────
+  // ── fetchGrade: GET /episodes/{id}/grade ──────────────────────────────────
   fetchGrade: async () => {
     const { episodeId } = get();
     if (!episodeId) return;
@@ -223,14 +339,13 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     try {
       const grade = await forge.grade(episodeId);
       set({ grade, grading: false, status: grade.correct ? "OPTIMAL" : "ERROR" });
-      // update stats after grading
       await get().fetchStats();
     } catch {
       set({ grading: false });
     }
   },
 
-  // ── fetchStats: GET leaderboard and summary ────────────────────────────
+  // ── fetchStats: GET leaderboard and summary ────────────────────────────────
   fetchStats: async () => {
     try {
       const [lb, sum] = await Promise.all([
@@ -243,7 +358,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     }
   },
 
-  // ── reset: clear all state ─────────────────────────────────────────────
+  // ── reset: clear all state ─────────────────────────────────────────────────
   reset: () => {
     _logCounter = 0;
     set({
@@ -255,10 +370,20 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       done: false,
       grade: null,
       error: null,
+      currentClaim: null,
+      currentTed: null,
+      toolLog: [],
+      societyVotes: {},
+      expertDecision: null,
+      predictedChain: [],
+      gnnNodeImportance: {},
+      isFallbackMode: false,
+      fallbackEpisode: null,
+      liveClaimError: null,
     });
   },
 
-  // ── runDemoMode: populate with mock high-speed run ───────────────────
+  // ── runDemoMode: populate with mock high-speed run ─────────────────────────
   runDemoMode: () => {
     set({
       status: "ACTIVE",
@@ -323,15 +448,14 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
               false_positive_penalty: 0,
               composite_score: 0.98,
               task_grader_score: 0.96,
-              combined_score: 0.97
-            }
-          }
+              combined_score: 0.97,
+            },
+          },
         }));
-        // Use the proper state getter for the async call
         useForgeStore.getState().fetchStats();
         return;
       }
-      
+
       const { action, agent, obs } = demoSequence[step];
       const newLog: LogEntry = {
         id: ++_logCounter,
@@ -339,17 +463,208 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         agent: agent as any,
         text: demoSequence[step].detail,
         ts: `00:0${step + 1}`,
-        // rewards strictly in (0, 1) — scale 0.05–0.19 per step
-        reward: Math.min(0.99, Math.max(0.01, parseFloat((0.05 + step * 0.024).toFixed(3))))
+        reward: Math.min(0.99, Math.max(0.01, parseFloat((0.05 + step * 0.024).toFixed(3)))),
       };
 
       set((state) => ({
         logs: [...state.logs, newLog],
         observation: { ...state.observation!, ...obs },
-        totalReward: state.totalReward + (newLog.reward || 0)
+        totalReward: state.totalReward + (newLog.reward || 0),
       }));
-      
+
       step++;
     }, 600);
+  },
+
+  // ── setLiveClaim ────────────────────────────────────────────────────────────
+  setLiveClaim: (claim: string) => set({ liveClaim: claim }),
+
+  // ── submitLiveClaim ─────────────────────────────────────────────────────────
+  submitLiveClaim: async () => {
+    const { liveClaim, apiFailureCount, activateFallback } = get();
+    if (!liveClaim.trim()) return;
+
+    set({ liveClaimLoading: true, liveClaimError: null });
+
+    try {
+      const response = await fetch("/fabricate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ seed_claim: liveClaim, k_max: 4 }),
+          signal: AbortSignal.timeout(15000),
+        }
+      );
+
+      if (response.status === 429) {
+        console.warn("API rate limited — switching to Plandemic fallback");
+        activateFallback();
+        set({ liveClaimLoading: false });
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const episodeData = await response.json();
+
+      // Inject the fabricated claim result into log stream as a demo sequence
+      _logCounter = 0;
+      const claimText = episodeData.fabricated_claim ?? liveClaim;
+      const trueChain: string[] = episodeData.true_chain ?? [];
+
+      set({
+        liveClaimLoading: false,
+        apiFailureCount: 0,
+        status: "ACTIVE",
+        currentClaim: claimText,
+        predictedChain: trueChain,
+        observation: {
+          episode_id: episodeData.episode_id ?? "live-001",
+          vector: [],
+          claim_text: claimText,
+          evidence_coverage: 0.1,
+          source_diversity: 0.2,
+          contradiction_count: 0,
+          manipulation_flagged: false,
+          budget_remaining: 1.0,
+          steps_used: 0,
+        },
+        logs: [
+          {
+            id: ++_logCounter,
+            action: "init",
+            text: `Live claim submitted: "${claimText.slice(0, 80)}…"`,
+            ts: "00:00",
+            agent: "Orchestrator",
+          },
+        ],
+      });
+
+      // Simulate Blue Team Investigation
+      const trueChainStr = trueChain.join(", ");
+      const investigateSequence = [
+        { action: "query_source",          agent: "Blue Team",   detail: "Queried sources for claim verification",             obs: { evidence_coverage: 0.25, source_diversity: 0.35, steps_used: 1, budget_remaining: 0.85 } },
+        { action: "cross_reference",       agent: "Blue Team",   detail: "Cross-referencing entities in claim graph",          obs: { evidence_coverage: 0.45, source_diversity: 0.50, steps_used: 2, budget_remaining: 0.70 } },
+        { action: "gnn_explain",           agent: "Blue Team",   detail: `GNN detected structural patterns matching: ${trueChainStr}`, obs: { evidence_coverage: 0.75, source_diversity: 0.80, steps_used: 3, budget_remaining: 0.50 } },
+        { action: "flag_manipulation",     agent: "Red Team",    detail: "Manipulation confirmed by Red Team adversarial fingerprint", obs: { evidence_coverage: 0.90, source_diversity: 0.85, steps_used: 4, budget_remaining: 0.30 } },
+        { action: "submit_verdict",        agent: "Orchestrator",detail: "Consensus reached: MISINFORMATION",                  obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
+      ];
+
+      let step = 0;
+      if ((window as any)._demoInterval) clearInterval((window as any)._demoInterval);
+
+      const interval = setInterval(() => {
+        if (step >= investigateSequence.length) {
+          clearInterval(interval);
+          (window as any)._demoInterval = null;
+          set((state) => ({
+            status: "OPTIMAL",
+            done: true,
+            grade: {
+              episode_id: state.episodeId || "live-001",
+              verdict: "misinformation",
+              true_label: "misinformation",
+              correct: true,
+              accuracy: 0.95,
+              manipulation_detected: true,
+              evidence_coverage: 0.99,
+              steps_used: 5,
+              efficiency_score: 0.90,
+              total_reward: 0.92,
+              grade_breakdown: {
+                base_correctness: 0.95,
+                efficiency_bonus: 0.15,
+                coverage_bonus: 0.10,
+                manipulation_bonus: 0.10,
+                false_positive_penalty: 0,
+                composite_score: 0.96,
+                task_grader_score: 0.94,
+                combined_score: 0.95,
+              },
+            },
+          }));
+          return;
+        }
+
+        const { action, agent, obs } = investigateSequence[step];
+        const newLog: LogEntry = {
+          id: ++_logCounter,
+          action,
+          agent: agent as any,
+          text: investigateSequence[step].detail,
+          ts: `00:0${step + 1}`,
+          reward: Math.min(0.99, Math.max(0.01, parseFloat((0.10 + step * 0.15).toFixed(3)))),
+        };
+
+        set((state) => ({
+          logs: [...state.logs, newLog],
+          observation: { ...state.observation!, ...obs },
+          totalReward: state.totalReward + (newLog.reward || 0),
+        }));
+
+        step++;
+      }, 800);
+
+    } catch (err: any) {
+      const newFailureCount = apiFailureCount + 1;
+      if (newFailureCount >= 2) {
+        activateFallback();
+      }
+      set({
+        liveClaimLoading: false,
+        liveClaimError: err.message,
+        apiFailureCount: newFailureCount,
+      });
+    }
+  },
+
+  // ── activateFallback ────────────────────────────────────────────────────────
+  activateFallback: () => {
+    const fb = PLANDEMIC_FALLBACK;
+    _logCounter = 0;
+    set({
+      isFallbackMode: true,
+      fallbackEpisode: fb,
+      status: "OPTIMAL",
+      done: true,
+      currentClaim: fb.claim,
+      currentTed: fb.ted,
+      toolLog: fb.toolLog,
+      societyVotes: fb.societyVotes,
+      expertDecision: fb.expertDecision,
+      predictedChain: fb.predictedChain,
+      gnnNodeImportance: fb.gnnNodeImportance,
+      liveClaimError: null,
+      observation: {
+        episode_id: "fallback-plandemic",
+        vector: [],
+        claim_text: fb.claim,
+        evidence_coverage: 0.99,
+        source_diversity: 0.95,
+        contradiction_count: 4,
+        manipulation_flagged: true,
+        budget_remaining: 0.05,
+        steps_used: 7,
+      },
+      logs: fb.toolLog.map((entry, i) => ({
+        id: ++_logCounter,
+        action: entry.tool,
+        text: entry.finding,
+        ts: `00:0${i + 1}`,
+        reward: 0.1 + i * 0.02,
+        agent: (["trace_origin", "network_cluster", "flag_manipulation"].includes(entry.tool)
+          ? "Red Team"
+          : entry.tool.startsWith("entity") || entry.tool.startsWith("quote")
+          ? "Blue Team"
+          : "Blue Team") as "Blue Team" | "Red Team" | "Orchestrator",
+      })),
+      totalReward: 0.94,
+    });
+  },
+
+  // ── resetFallback ───────────────────────────────────────────────────────────
+  resetFallback: () => {
+    set({ isFallbackMode: false, fallbackEpisode: null, apiFailureCount: 0 });
   },
 }));

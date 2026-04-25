@@ -4,6 +4,9 @@ import { useEffect } from "react";
 import { motion, AnimatePresence, useScroll, useTransform, useMotionTemplate } from "framer-motion";
 import { Activity, Shield, Terminal, Zap, Cpu, WifiOff } from "lucide-react";
 import { useForgeStore } from "@/store/forgeStore";
+import { MultiAgentActivityPanel } from "@/components/ui/MultiAgentActivityPanel";
+import LiveClaimInput from "@/components/sections/LiveClaimInput";
+import GNNExplainerPanel from "@/components/sections/GNNExplainerPanel";
 import { useRef } from "react";
 
 const ACTION_COLORS: Record<string, string> = {
@@ -130,6 +133,27 @@ export function DashboardPreviewSection() {
             )}
           </motion.div>
 
+          {/* Live Claim Input */}
+          <motion.div variants={slideUp} className="w-full flex justify-center z-20">
+            <div className="w-full max-w-4xl">
+              <LiveClaimInput />
+            </div>
+          </motion.div>
+
+          {/* Claim Banner */}
+          {observation && (
+            <motion.div variants={slideUp} className="w-full flex justify-center mb-2">
+              <div className="w-full max-w-4xl px-6 py-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-4 shadow-[0_0_30px_rgba(245,158,11,0.15)] backdrop-blur-md">
+                <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <span className="text-amber-400 font-black tracking-widest text-xs">CLAIM</span>
+                </div>
+                <p className="text-lg md:text-xl text-amber-100/90 font-medium leading-relaxed font-serif tracking-wide border-l-2 border-amber-500/50 pl-4 py-1">
+                  "{observation.claim_text}"
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           {/* Main panel */}
           <motion.div variants={scaleUp} className="w-full flex justify-center">
             <motion.div
@@ -196,12 +220,6 @@ export function DashboardPreviewSection() {
                     <Terminal className="w-3.5 h-3.5 text-cyan-500" />
                     <span className="text-[10px] font-bold text-cyan-500 tracking-widest">THOUGHT STREAM</span>
                   </div>
-                  {observation && (
-                    <div className="px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-start gap-2 shrink-0">
-                      <span className="text-amber-400 text-[9px] font-bold tracking-widest shrink-0 mt-0.5">CLAIM</span>
-                      <p className="text-[10px] text-amber-100/80 leading-snug font-mono">{observation.claim_text}</p>
-                    </div>
-                  )}
                   <div className="flex-1 relative min-h-[250px] lg:min-h-0">
                     <div className="absolute inset-0 flex flex-col gap-0 overflow-y-auto pr-1">
                       <AnimatePresence initial={false}>
@@ -273,11 +291,22 @@ export function DashboardPreviewSection() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-white font-black text-lg tracking-wide">{status}</p>
-                      <p className="text-[10px] text-slate-500">Neural Engine</p>
-                      {grade && <p className={`text-[10px] font-bold mt-1 ${grade.correct ? "text-emerald-400" : "text-red-400"}`}>
-                        {grade.correct ? "✓ Correct" : "✗ Wrong"} · {(grade.total_reward).toFixed(3)} reward
-                      </p>}
+                      {grade && (
+                        <motion.div key="grade" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-start gap-1">
+                          <p className={`font-bold text-xs ${grade.correct ? "text-emerald-400" : "text-red-400"}`}>
+                            {grade.correct 
+                              ? (grade.verdict === "misinformation" || grade.verdict === "fabricated" ? "✓ FAKE NEWS DETECTED" : "✓ REAL NEWS VERIFIED") 
+                              : "✗ INCORRECT PREDICTION"}
+                          </p>
+                          <p className="text-slate-400 text-[9px]">Verdict: <span className="text-white">{grade.verdict ?? "—"}</span></p>
+                        </motion.div>
+                      )}
+                      {!grade && (
+                        <>
+                          <p className="text-white font-black text-lg tracking-wide">{status}</p>
+                          <p className="text-[10px] text-slate-500">Neural Engine</p>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -316,42 +345,9 @@ export function DashboardPreviewSection() {
                     ))}
                   </div>
 
-                  {/* Evidence graph / Grade */}
-                  <div className="glass-panel rounded-[24px] p-4 flex flex-col gap-3 shadow-2xl flex-1">
-                    <span className="text-[10px] font-bold text-cyan-500 tracking-widest">
-                      {grade ? "FINAL GRADE" : "EVIDENCE GRAPH"}
-                    </span>
-                    <div className="flex-1 min-h-[80px] border border-white/5 bg-black/30 rounded-xl p-4 font-mono text-xs flex flex-col justify-center items-center text-slate-500">
-                      <AnimatePresence mode="wait">
-                        {grading ? (
-                          <motion.div key="grading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-2">
-                            <Activity className="w-5 h-5 text-cyan-500 animate-spin" />
-                            <p className="text-slate-400 text-[11px]">Grading…</p>
-                          </motion.div>
-                        ) : grade ? (
-                          <motion.div key="grade" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1 text-center w-full">
-                            <p className={`font-bold text-sm ${grade.correct ? "text-emerald-400" : "text-red-400"}`}>
-                              {grade.correct ? "✓ CORRECT" : "✗ WRONG"}
-                            </p>
-                            <p className="text-slate-400 text-[10px]">Verdict: <span className="text-white">{grade.verdict ?? "—"}</span></p>
-                            <p className="text-slate-400 text-[10px]">Label: <span className="text-cyan-400">{grade.true_label}</span></p>
-                            <p className="text-slate-500 text-[9px] mt-1">Score: {grade.grade_breakdown.combined_score}</p>
-                          </motion.div>
-                        ) : isRunning ? (
-                          <motion.div key="running" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-2 text-center">
-                            <Activity className="w-5 h-5 text-cyan-500 animate-pulse" />
-                            <p className="text-slate-300 text-[11px]">Constructing…</p>
-                            <p className="text-slate-600 text-[9px]">
-                              {selectedTaskName.replace(/_/g, " ")} · Depth {depth}
-                            </p>
-                          </motion.div>
-                        ) : (
-                          <motion.p key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[10px]">
-                            Awaiting investigation…
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                  {/* GNN Explainer Panel */}
+                  <div className="flex-1 flex flex-col min-h-[200px]">
+                    <GNNExplainerPanel />
                   </div>
                 </motion.div>
               </div>
@@ -362,110 +358,8 @@ export function DashboardPreviewSection() {
           <motion.div variants={slideUp} className="w-full flex justify-center mt-2">
             <div className="w-full rounded-[24px] overflow-hidden glass-panel shadow-2xl p-6 flex flex-col gap-6">
 
-              {/* Agent Activity Row */}
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <Cpu className="w-4 h-4 text-cyan-400" />
-                  <span className="text-[10px] font-bold text-cyan-400 tracking-widest">MULTI-AGENT ACTIVITY</span>
-                  {isRunning && <span className="ml-2 w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    {
-                      name: "Blue Team",
-                      role: "Evidence Investigator",
-                      color: "from-blue-500/20 to-cyan-500/20",
-                      border: "border-blue-500/30",
-                      badge: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-                      actions: logs.filter(l => l.agent === "Blue Team"),
-                      icon: "🔵",
-                      tasks: ["query_source", "cross_reference", "temporal_audit", "entity_link"],
-                    },
-                    {
-                      name: "Red Team",
-                      role: "Adversarial Validator",
-                      color: "from-rose-500/20 to-pink-500/20",
-                      border: "border-rose-500/30",
-                      badge: "bg-rose-500/20 text-rose-400 border-rose-500/30",
-                      actions: logs.filter(l => l.agent === "Red Team"),
-                      icon: "🔴",
-                      tasks: ["network_cluster", "flag_manipulation", "trace_origin"],
-                    },
-                    {
-                      name: "Orchestrator",
-                      role: "Consensus Engine",
-                      color: "from-purple-500/20 to-fuchsia-500/20",
-                      border: "border-purple-500/30",
-                      badge: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-                      actions: logs.filter(l => l.agent === "Orchestrator"),
-                      icon: "🟣",
-                      tasks: ["submit_verdict_misinfo", "submit_verdict_real", "submit_verdict_fabricated"],
-                    },
-                  ].map((agent) => {
-                    const totalAgentReward = agent.actions.reduce((s, l) => s + (l.reward ?? 0), 0);
-                    const lastAction = agent.actions[agent.actions.length - 1];
-                    return (
-                      <div key={agent.name} className={`rounded-2xl border ${agent.border} bg-gradient-to-br ${agent.color} p-4 flex flex-col gap-3`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">{agent.icon}</span>
-                            <div>
-                              <p className="text-xs font-black text-white">{agent.name}</p>
-                              <p className="text-[9px] text-slate-400 tracking-wide">{agent.role}</p>
-                            </div>
-                          </div>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${agent.badge}`}>
-                            {agent.actions.length} ops
-                          </span>
-                        </div>
-
-                        {/* Last action */}
-                        <div className="bg-black/30 rounded-xl p-2.5 min-h-[44px] flex flex-col justify-center">
-                          {lastAction ? (
-                            <>
-                              <p className="text-[9px] font-mono font-bold text-white/80 uppercase tracking-wider">{lastAction.action.replace(/_/g, " ")}</p>
-                              <p className="text-[9px] text-slate-400 leading-snug mt-0.5 line-clamp-2">{lastAction.text}</p>
-                            </>
-                          ) : (
-                            <p className="text-[9px] text-slate-600 italic">{isRunning ? "Waiting for task…" : "Idle"}</p>
-                          )}
-                        </div>
-
-                        {/* Progress bar */}
-                        <div>
-                          <div className="flex justify-between text-[9px] mb-1">
-                            <span className="text-slate-500">Score Contribution</span>
-                            <span className="font-mono text-white/60">{Math.min(0.99, parseFloat(totalAgentReward.toFixed(2)))}</span>
-                          </div>
-                          <div className="h-1 rounded-full bg-black/50 overflow-hidden">
-                            <motion.div
-                              className={`h-full rounded-full bg-gradient-to-r ${agent.color.replace("/20", "")}`}
-                              animate={{ width: `${Math.min(99, totalAgentReward * 100)}%` }}
-                              transition={{ duration: 0.5, ease: "easeOut" }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Recent ops list */}
-                        <div className="flex flex-col gap-1">
-                          {agent.actions.slice(-3).map((l) => (
-                            <div key={l.id} className="flex items-center gap-1.5">
-                              <span className="w-1 h-1 rounded-full bg-white/30 shrink-0" />
-                              <span className="text-[8px] text-slate-400 font-mono truncate">{l.action.replace(/_/g, " ")}</span>
-                              {l.reward !== undefined && (
-                                <span className="ml-auto text-[8px] font-mono text-emerald-400 shrink-0">+{l.reward.toFixed(3)}</span>
-                              )}
-                            </div>
-                          ))}
-                          {agent.actions.length === 0 && (
-                            <span className="text-[8px] text-slate-600 italic">No actions yet</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Agent Activity Row — Live visualization panel */}
+              <MultiAgentActivityPanel />
 
               {/* Stats + Leaderboard Row */}
               <div className="flex flex-col md:flex-row gap-6 border-t border-white/10 pt-6">
