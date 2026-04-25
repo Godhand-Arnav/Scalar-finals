@@ -1,3 +1,12 @@
+---
+title: Forge RL
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # FORGE-MA: Train LLMs to Investigate Misinformation via Adversarial RL
 
 [![Space](https://img.shields.io/badge/🤗-Live%20Demo-blue)](https://huggingface.co/spaces/NeuralHU/forge-rl)
