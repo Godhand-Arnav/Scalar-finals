@@ -1,7 +1,5 @@
-"""
-Training package init.
-"""
-from training.curriculum import CurriculumManager
-from training.eval import evaluate_agent
+# __init__.py
+from .models import ForgeAction, ForgeObservation, ForgeState
+from .client import ForgeEnv
 
-__all__ = ["CurriculumManager", "evaluate_agent"]
+__all__ = ["ForgeAction", "ForgeObservation", "ForgeState", "ForgeEnv"]

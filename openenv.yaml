@@ -1,9 +1,7 @@
-name: forge-ma
-version: 2.0.0
-description: "FORGE-MA: Misinformation Inverse Forensics via Multi-Agent Adversarial RL. Blue Team Society of Thought reconstructs Red Team deception primitive chains."
-author: "FORGE-MA Team"
-tags: [openenv, multi-agent, adversarial, misinformation, inverse-forensics]
-
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
 tasks:
   - id: fabricated_stats
     difficulty: easy
@@ -23,53 +21,3 @@ tasks:
     difficulty: medium
   - id: plandemic
     difficulty: hard
-
-docker:
-  build: .
-  port: 7860
-
-endpoints:
-  reset:
-    path: /reset
-    method: POST
-  step:
-    path: /step
-    method: POST
-  state:
-    path: /state
-    method: GET
-  tasks:
-    path: /tasks
-    method: GET
-  observations_schema:
-    path: /observations/schema
-    method: GET
-  actions_schema:
-    path: /actions/schema
-    method: GET
-  rewards_schema:
-    path: /rewards/schema
-    method: GET
-  oversight_report:
-    path: /oversight-report/{episode_id}
-    method: GET
-  chain_metrics:
-    path: /chain-metrics/{episode_id}
-    method: GET
-  expert_review:
-    path: /expert-review/{episode_id}
-    method: GET
-  society_vote:
-    path: /society-vote/{episode_id}
-    method: GET
-
-observation_space:
-  type: Box
-  shape: [3862]
-  dtype: float32
-
-action_space:
-  type: Discrete
-  n: 15
-
-reward_range: [0.001, 0.999]
