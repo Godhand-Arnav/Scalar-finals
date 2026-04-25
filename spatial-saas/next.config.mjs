@@ -34,6 +34,10 @@ const nextConfig = {
         source: '/episodes/:path*',
         destination: 'http://localhost:7860/episodes/:path*',
       },
+      {
+        source: '/fabricate',
+        destination: 'http://localhost:7860/fabricate',
+      },
     ];
   },
 };

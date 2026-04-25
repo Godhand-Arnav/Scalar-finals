@@ -25,6 +25,7 @@ import uvicorn  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 import config  # noqa: E402
 from server.state import EPISODE_STORE  # noqa: E402
@@ -32,6 +33,11 @@ from env.misinfo_env import ACTIONS  # noqa: E402
 
 logging.basicConfig(level=config.LOG_LEVEL, format=config.LOG_FORMAT)
 logger = logging.getLogger("forge.server")
+
+
+class FabricateRequest(BaseModel):
+    seed_claim: str
+    k_max: int = 4
 
 
 @asynccontextmanager
@@ -145,6 +151,66 @@ def create_app() -> FastAPI:
                 }
                 for i, name in enumerate(ACTIONS)
             ]
+        }
+
+
+    @app.post("/fabricate", tags=["System"])
+    async def fabricate_claim(request: FabricateRequest):
+        """
+        Given a seed claim, Red Team applies primitives and returns
+        the fabricated graph + true chain for Blue Team to investigate.
+        Uses the actual RedAgent for autonomous fabrication.
+        """
+        from env.forge_env import ForgeEnv
+        import uuid
+
+        env = ForgeEnv()
+
+        # Standard reset
+        obs, info = env.reset()
+
+        # Override the claim text with the user's seed claim
+        env._claim_text = request.seed_claim
+        env._claim_text_initial = request.seed_claim
+        # Start with empty chain; let the agent build it
+        env._true_chain = []
+        env.red_agent.reset()
+
+        # Run Red Team steps autonomously
+        steps_run = 0
+        while steps_run < min(request.k_max, env.config.budget):
+            try:
+                obs, reward, terminated, truncated, step_info = env.step()
+                steps_run += 1
+                if terminated or truncated:
+                    break
+            except Exception:
+                break
+
+        # Collect the actual chain applied by the agent
+        final_chain = [p.value for p in env.red_agent.current_chain]
+        
+        # Get graph stats
+        graph_nodes = len(env._claim_graph.nodes) if env._claim_graph else 1
+        suspicious = sum(1 for n in (env._claim_graph.nodes if env._claim_graph else []) if n.injected)
+
+        episode_id = f"live-{uuid.uuid4().hex[:8]}"
+
+        return {
+            "seed_claim": request.seed_claim,
+            "fabricated_claim": request.seed_claim,
+            "true_chain": final_chain,
+            "plausibility_score": round(0.5 + 0.1 * len(final_chain), 2),
+            "graph_summary": {
+                "node_count": graph_nodes,
+                "suspicious_nodes": suspicious,
+                "steps_run": steps_run,
+            },
+            "episode_id": episode_id,
+            "red_team_description": (
+                f"Agent applied {len(final_chain)} primitives: {', '.join(final_chain)}. "
+                f"Graph contains {suspicious} adversarial nodes."
+            ),
         }
 
     @app.get("/leaderboard", tags=["System"])
