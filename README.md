@@ -1,71 +1,112 @@
----
-title: Forge RL
-emoji: 🚀
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
----
+# 🔍 FORGE-MA: Forensic Multi-Agent Investigation Platform
 
-# FORGE-MA: Train LLMs to Investigate Misinformation via Adversarial RL
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-v0.100+-green.svg)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-v14+-black.svg)](https://nextjs.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-v2.0+-orange.svg)](https://pytorch.org/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-[![Space](https://img.shields.io/badge/🤗-Live%20Demo-blue)](https://huggingface.co/spaces/NeuralHU/forge-rl)
-[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](training/forge_grpo_colab.ipynb)
-
-> **[▶ Live Environment](https://huggingface.co/spaces/NeuralHU/forge-rl)** |
-> **[📓 Training Notebook](training/forge_grpo_colab.ipynb)** |
-> **[📝 Blog Post](https://huggingface.co/blog/NeuralHU/forge-rl)**
+**FORGE-MA** (Forensic Multi-Agent) is an end-to-end framework for *forensic-grade* misinformation detection. Unlike traditional classifiers that provide a simple binary verdict, FORGE-MA reconstructs the entire **tactic chain**—the sequence of deception primitives used to fabricate a claim—providing a transparent audit trail for analysts.
 
 ---
 
-## The Problem
+## 🌟 Key Features
 
-LLMs can classify text. They cannot *investigate*. A human fact-checker
-queries sources, checks timelines, cross-references entities, then submits
-a verdict. FORGE-MA trains LLMs to do exactly that — structured forensic
-investigation as a Markov decision process.
+- **Adversarial Self-Play**: Red Team (HAE+GIN) vs. Blue Team (SoT+GIN) co-evolutionary training.
+- **Society of Thought (SoT)**: A collaborative investigation process involving 4 specialist agents (Auditor, Historian, Critic, and NegotiatedSearch) across different LLM providers (Groq, Cerebras, Mistral, OpenRouter).
+- **9 Investigative Task Types**: From fabricated statistics and out-of-context imagery to coordinated SEC fraud and "Plandemic" conspiracy theories.
+- **Spatial SaaS Dashboard**: A modern Next.js interface with real-time 3D graph visualizations of evidence chains and forensic artifacts.
+- **STIX 2.1 Integration**: Export forensic findings into standardized STIX 2.1 bundles for inter-agency intelligence sharing.
 
-## The Environment
+---
 
-- **9 task types**: fabricated statistics, out-of-context imagery, coordinated
-  campaigns, political fact-checks, image forensics, SEC fraud, satire, and more
-- **13 actions**: 10 investigation tools + 3 verdict submissions
-- **Procedurally generated**: no two episodes are identical
-- **Shaped reward**: R = 0.90×correctness + 0.20×efficiency + 0.10×coverage —
-  rich signal, not terminal-only
+## 🏗️ Architecture
 
-## Results
+```mermaid
+graph TD
+    subgraph "Red Team (Fabrication)"
+        RT[Red Agent] -->|Selects Primitives| DP[Deception Primitives]
+        DP -->|Generates| CG[Claim Graph]
+    end
 
-![Reward Curve](results/reward_curve.png)
-*GRPO training improves mean episode reward from baseline to trained agent.*
+    subgraph "Blue Team (Investigation)"
+        SoT[Society of Thought] -->|Queries| CG
+        SoT -->|Consults| GNN[GIN Predictor]
+        SoT -->|Produces| FR[Forensic Report]
+    end
 
-![Before After](results/before_after.png)
-*Quantitative improvement after 3 epochs of GRPO training on T4 GPU (~45 min).*
+    CG -->|Visualization| SD[Spatial Dashboard]
+    FR -->|Export| STIX[STIX 2.1 Bundle]
+```
 
-## Quickstart
+### 8 Deception Primitives (DISARM-Aligned)
+| Primitive | DISARM ID | Description |
+|-----------|-----------|-------------|
+| **SOURCE_LAUNDER** | T0013.001 | Insert low-trust intermediary domains |
+| **TEMPORAL_SHIFT** | T0046 | Backdate publication timestamps |
+| **ENTITY_SUBSTITUTE**| T0075.001 | Replace named entities with misleading ones |
+| **QUOTE_FABRICATE** | T0006 | Fabricate attributed quotes |
+| **CONTEXT_STRIP** | T0019.001 | Remove qualifying context |
+| **CITATION_FORGE** | T0016 | Create fake academic/legal citations |
+| **NETWORK_AMPLIFY** | T0049 | Simulate coordinated bot amplification |
+| **SATIRE_REFRAME** | T0085.001 | Repackage satire as factual news |
 
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Python 3.10+
+- Node.js & npm (for the dashboard)
+- LLM API Keys (configured in `.env`)
+
+### Local Setup
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/your-repo/forge-ma.git
+   cd forge-ma
+   ```
+
+2. **Install Python dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Initialize the Dashboard**:
+   ```bash
+   cd spatial-saas
+   npm install
+   ```
+
+### Running the Platform
+
+For convenience, use the provided batch script (Windows):
 ```bash
-git clone https://huggingface.co/spaces/NeuralHU/forge-rl
-pip install ./forge-rl
+run_forge.bat
 ```
 
-```python
-from forge_ma import ForgeEnv, ForgeAction
+Alternatively, start the components manually:
 
-with ForgeEnv(base_url="https://NeuralHU-forge-rl.hf.space").sync() as env:
-    obs = env.reset()
-    print(obs.claim_text)              # the claim to investigate
-    result = env.step(ForgeAction(action=0))   # query_source
-    result = env.step(ForgeAction(action=10))  # submit_verdict_misinfo
-    print(result.reward)               # shaped reward signal
-```
+- **Backend API**: `py -m uvicorn server.main:app --host 0.0.0.0 --port 7860`
+- **Frontend Dashboard**: `cd spatial-saas && npm run dev`
 
-## Train Your Own Agent
-Open [training/forge_grpo_colab.ipynb](training/forge_grpo_colab.ipynb) in
-Colab and run all cells. Runs on free T4 GPU in ~45 minutes.
+Access the dashboard at **[http://localhost:3000](http://localhost:3000)**.
 
-## Why This Matters
-Misinformation detection is moving from classifiers to investigative agents.
-FORGE-MA provides the training ground: structured forensic reasoning under
-budget constraints, with adversarial claim generation. A researcher could
-write a paper about an agent trained on this environment.
+---
+
+## 📊 Training & Evaluation
+
+FORGE-MA uses **Tactic Edit Distance (TED)** as its primary metric, rewarding agents for identifying the *root cause* of misinformation early in the chain.
+
+- **Pretraining**: Run `python pretrain.py` to initialize Red and Blue neural weights.
+- **RL Training**: Use the provided `training/trl_forge_ma.ipynb` to fine-tune your own investigator using GRPO.
+- **Baselines**: Run `python scripts/run_baseline.py` to compare against heuristic and prompted LLM baselines.
+
+---
+
+## 📜 License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+
+*Developed for the Meta × HuggingFace OpenEnv Hackathon.*

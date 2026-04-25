@@ -19,7 +19,7 @@ server = "forge_ma.server.app:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["forge_ma*"]
+include = ["*"]
 
 [tool.setuptools.package-dir]
 "" = "."
