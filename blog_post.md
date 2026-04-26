@@ -128,7 +128,7 @@ Is 0.174 the ceiling? Absolutely not. This is a 0.5B model trained for 5 minutes
 ```bash
 git clone https://github.com/Godhand-Arnav/Scalar-finals.git
 cd Scalar-finals
-# Open notebooks/trl_forge_ma.ipynb in Colab or Kaggle
+# Open notebooks/trl_forge_rl.ipynb in Colab or Kaggle
 # Run Cell 1, wait for "Setup complete.", then run all remaining cells
 ```
 
