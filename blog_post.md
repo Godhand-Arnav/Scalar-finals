@@ -1,5 +1,5 @@
 ---
-title: "FORGE‑MA: GRPO‑Powered Fine‑Tuning of a 0.5 B LLM for Misinformation Forensics"
+title: "FORGE-RL: GRPO-Powered Fine-Tuning of a 0.5 B LLM for Misinformation Forensics"
 author: "Arnav Godhand"
 tags: ["reinforcement-learning", "GRPO", "LoRA", "misinformation", "forensics", "HuggingFace"]
 license: "MIT"
@@ -27,7 +27,7 @@ That is forensic reasoning. Not binary classification. Not sentiment analysis. A
 
 No open-source tool was doing this.
 
-So during the META AI Hackathon, we built FORGE-MA: a reinforcement learning pipeline that trains a language model — a genuinely small one, 0.5 billion parameters, free to run on Kaggle — to identify the precise deception tactics used to construct any given misinformation claim.
+So during the META AI Hackathon, we built FORGE-RL: a reinforcement learning pipeline that trains a language model — a genuinely small one, 0.5 billion parameters, free to run on Kaggle — to identify the precise deception tactics used to construct any given misinformation claim.
 
 We ran it for 100 steps. The reward nearly doubled.
 
@@ -39,17 +39,17 @@ We think that matters. A lot.
 
 Here is the thing about existing fact-checking tools — they are all playing defence. You feed them a claim, they tell you if it is true. That is useful, but it is the equivalent of a doctor who can only tell you if you are sick, not what disease you have or how you caught it.
 
-FORGE-MA is a pathologist, not just a physician.
+FORGE-RL is a pathologist, not just a physician.
 
-When FORGE-MA analyses a claim, it does not just say "false". It says: "This claim was constructed using SOURCE_LAUNDER followed by TEMPORAL_SHIFT — someone took a real 2012 quote, attributed it to a credible institution, and presented it as a statement from yesterday." That is actionable intelligence. You can trace the campaign. You can find other content using the same fingerprint. You can build a case.
+When FORGE-RL analyses a claim, it does not just say "false". It says: "This claim was constructed using SOURCE_LAUNDER followed by TEMPORAL_SHIFT — someone took a real 2012 quote, attributed it to a credible institution, and presented it as a statement from yesterday." That is actionable intelligence. You can trace the campaign. You can find other content using the same fingerprint. You can build a case.
 
-Think of it this way. Every WhatsApp forward your uncle sends is not random — it was *designed*. Someone sat down and deliberately chose which deception tactics to combine to make it believable to a 60-year-old in a tier-2 city at 6 AM. FORGE-MA can read that design. No other open-source tool can.
+Think of it this way. Every WhatsApp forward your uncle sends is not random — it was *designed*. Someone sat down and deliberately chose which deception tactics to combine to make it believable to a 60-year-old in a tier-2 city at 6 AM. FORGE-RL can read that design. No other open-source tool can.
 
 And because it is a *trained model*, not a rule-based system, it generalises. Feed it a claim it has never seen before in a domain it was never trained on — it still tries to reason about the forensic structure. It gets better every time you train it with more episodes. It runs on hardware you already have access to for free.
 
 ---
 
-## What FORGE-MA Actually Does
+## What FORGE-RL Actually Does
 
 The first thing we did was build a vocabulary of deception primitives — the atomic building blocks that real disinformation campaigns are assembled from:
 
@@ -138,7 +138,7 @@ Everything is pinned. Everything is documented. Nothing requires a paid API key 
 
 ## What We Are Building Next
 
-FORGE-MA was built in a weekend, but we are not done with it.
+FORGE-RL was built in a weekend, but we are not done with it.
 
 The `MisInfoForensicsEnv` is a proper OpenAI Gym environment — any agent can plug in. The primitive vocabulary is editable without retraining. The reward function is swappable. The architecture is a scaffold, not a monolith.
 
@@ -152,7 +152,7 @@ If any of this sounds like something you want to build with us, the issues page 
 
 ## Why You Should Use This, Not Just Star It
 
-Most research projects get starred on GitHub and never run. We built FORGE-MA specifically to break that pattern.
+Most research projects get starred on GitHub and never run. We built FORGE-RL specifically to break that pattern.
 
 The notebook is a single file. You do not need to understand LoRA, GRPO, or Pydantic version hell to run it — all of that is handled in Cell 1. You do not need a paid GPU — Kaggle gives you 30 hours of free P100 time every week. You do not need a labelled dataset — the environment generates training data on its own.
 
@@ -163,6 +163,7 @@ India has 500 million WhatsApp users. The next election cycle is not far. The ne
 This one is not. Fork it and use it.
 
 ---
+
 ## A Closing Thought
 
 The misinformation problem is not going to be solved by a better classifier. It is going to be solved by systems that understand *how* disinformation works — the tactics, the patterns, the forensic fingerprints that campaigns leave behind.
