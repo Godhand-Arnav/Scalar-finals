@@ -13,50 +13,54 @@ A 0.5B model. A free GPU. A weekend. And a reward curve that doubled the baselin
 
 ## Why We Built This
 
-In 2018, a fake kidnapping video on WhatsApp led to five deaths in Jharkhand. In 2019, a synthetic deepfake of Amit Shah hit 50,000 groups in 48 hours. The damage happens the moment a lie *feels* true.
+In 2018, a two-minute WhatsApp video of a man "kidnapping a child" spread through a village in Jharkhand. It was actually a public awareness clip shot in Pakistan. By the time anyone figured that out, five people had been lynched by a mob.
 
-Fact-checkers answer the wrong question: *Is this true or false?* That is a referee's job. We need detectives. We need to know: *Who built this, how, and what tactics did they use?*
+In 2019, a deepfake video of Amit Shah circulated, claiming the BJP would scrap OBC reservations. The video was entirely synthetic, but it hit 50,000 WhatsApp groups in 48 hours.
 
-During the META AI Hackathon, we built FORGE-RL: a reinforcement learning pipeline that trains a tiny 0.5B model to identify the deception tactics used to construct misinformation. In 100 steps on Kaggle, the reward doubled.
+The damage happens the moment a lie *feels* true. And by the time fact-checkers catch up, it is already too late. The narrative has set.
+
+We have spent years building tools that answer the wrong question. "Is this claim true or false?" is the question of a referee. What we actually need are detectives — systems that can look at a piece of misinformation and ask: *Who built this, how did they build it, and what specific tactics did they use?*
+
+During the META AI Hackathon, we built FORGE-RL: a reinforcement learning pipeline that trains a genuinely tiny 0.5B language model to identify the deception tactics used to construct misinformation. In just 100 steps on Kaggle, the reward doubled.
 
 ---
 
 ## Why This Is Different
 
-Fact-checkers play defence. They tell you if you are sick. FORGE-RL is a pathologist—it tells you *how* you caught the disease.
+Fact-checkers are playing defence. You feed them a claim, they tell you if it is true. That is useful, but it is the equivalent of a doctor who can only tell you if you are sick. FORGE-RL is a pathologist—it tells you exactly *how* you caught the disease.
 
-Instead of just tagging a claim 'false', it says: *Constructed using SOURCE_LAUNDER and TEMPORAL_SHIFT*. That is actionable intelligence. You can trace the campaign.
+When FORGE-RL analyses a claim, it does not just tag it 'false'. It says: *This claim was constructed using SOURCE_LAUNDER followed by TEMPORAL_SHIFT*. That is actionable intelligence. You can trace the campaign and find other content using the same fingerprint.
 
-Every WhatsApp forward your uncle sends was designed. FORGE-RL reads that design. And because it is a trained model, it generalises to new claims.
+Every WhatsApp forward your uncle sends is not random — it was deliberately designed. FORGE-RL reads that design. And because it is a trained model, not a rule-based system, it generalises to new, unseen claims.
 
 ---
 
 ## What FORGE-RL Actually Does
 
-We built a vocabulary of deception primitives — the atomic building blocks of disinformation:
+We built a vocabulary of deception primitives — the atomic building blocks of disinformation campaigns:
 
-| Primitive | Meaning | Example |
+| Primitive | What It Means | Real Indian Example |
 |---|---|---|
-| `SOURCE_LAUNDER` | Fake claim, credible source | "AIIMS doctors confirm..." (they didn't) |
-| `TEMPORAL_SHIFT` | Old event presented as new | 2013 riot footage shared in 2020 |
-| `QUOTE_FABRICATE` | Fake words, real person | Amit Shah deepfake on reservations |
-| `CONTEXT_STRIP` | True statement, misleading framing | Satire articles shared as real news |
-| `CITATION_FORGE` | Fake official sources | "WHO confirms turmeric milk..." |
-| `NETWORK_AMPLIFY` | Bot-driven consensus | Manufactured Twitter trends |
-| `SATIRE_REFRAME` | Satire presented as fact | Postcard News headlines |
-| `ENTITY_SUBSTITUTE`| Swapped people/places | Pakistani floods passed off as Indian |
+| `SOURCE_LAUNDER` | Attribute a fake claim to a credible source | "AIIMS doctors confirm..." (AIIMS never said this) |
+| `TEMPORAL_SHIFT` | Present old events as happening right now | 2013 Muzaffarnagar riot footage shared in 2020 |
+| `QUOTE_FABRICATE` | Attach fake words to a real person | The 2019 Amit Shah deepfake on reservations |
+| `CONTEXT_STRIP` | Remove context to make statements misleading | Satire articles from The Fauxy shared as real news |
+| `CITATION_FORGE` | Invent or distort official sources | "WHO confirms turmeric milk..." |
+| `NETWORK_AMPLIFY` | Use bots to manufacture consensus | Coordinated Twitter hashtag trends |
+| `SATIRE_REFRAME` | Present satire as factual breaking news | Postcard News style headlines |
+| `ENTITY_SUBSTITUTE`| Swap people or places to change the story | Pakistani flood images passed off as Indian |
 
-Claims are assembled from a hidden chain of these primitives. The model predicts the chain from the text. Our reward signal, Tactic-Edit-Distance (TED), measures how many edits it takes to match the true chain.
+Claims in the wild are assembled from a hidden chain of these primitives. The model's job is to read the text and predict that chain. Our reward signal, Tactic-Edit-Distance (TED), simply measures how many edits it takes to transform the model's prediction into the true chain.
 
 ---
 
 ## The Training Pipeline
 
-We fixed Pydantic version conflicts, `trl` bugs, and FP16 scaling crashes so you don't have to.
+Getting this to run reliably on a free GPU was tough. We fixed Pydantic version conflicts, bleeding-edge `trl` bugs, and FP16 gradient scaling crashes so you do not have to.
 
-The setup is a single cell that auto-detects Colab, Kaggle, or local. LoRA adapters (r=16) train in FP32 while the base model stays frozen.
+The final setup is a single cell that auto-detects Colab, Kaggle, or local. LoRA adapters (r=16) train in FP32 while the base model stays frozen, solving the scaling crashes entirely.
 
-GRPO generates 4 analyses per claim, scores them, and reinforces the best ones. No labels needed.
+GRPO is beautifully simple here: the model generates 4 forensic analyses for the same claim. We score them all. The better ones get reinforced. No labels needed.
 
 ```python
 # LoRA adapters — solve the FP16 gradient crash, cut memory in half
@@ -82,9 +86,9 @@ trainer.train()
 
 ![Reward curve – GRPO training on Qwen-0.5B](/assets/grpo_reward_curve.png)
 
-Watch the curve. At step 0, it knows nothing. By step 65, it crosses the random baseline (0.11). By step 90, it hits 0.20 on a free GPU.
+Watch the curve. At step 0, the model knows nothing. By step 65, it crosses the random baseline of 0.11. By step 90, it hits 0.20 on a free GPU.
 
-This is a 0.5B model trained for 5 minutes. The architecture and reward signal scale effortlessly to 7B models.
+This is a 0.5B model trained for 5 minutes. The architecture and reward signal scale effortlessly. Swap in a 7B model for 1000 steps, and you are in competitive territory.
 
 ---
 
@@ -97,17 +101,17 @@ cd Scalar-finals
 # Run Cell 1, wait for "Setup complete.", then run all remaining cells
 ```
 
-Pinned dependencies (`trl==0.15.1`, `pydantic==2.9.2`). Labeled `.env` slots. Auto-generated reward curves.
+Everything is pinned. Nothing requires a paid API key to train. The `.env.example` has labeled slots for every service used.
 
 ---
 
 ## What We Are Building Next
 
-The environment is Gym-compatible and modular. We are now working on:
-- Multilingual forensics (`aya-23-8b`)
-- Adversarial red-team vs. blue-team self-play
-- Live HF Space for real-time analysis
-- Federated training for news orgs
+FORGE-RL was built in a weekend, but we are not done. The environment is a modular OpenAI Gym wrapper. We are actively working on:
+- Multilingual forensics using `aya-23-8b` for non-English disinformation.
+- Adversarial self-play where a red-team generator fights a blue-team forensic agent.
+- A live HF Space for real-time claim analysis.
+- Federated training that lets news organizations fine-tune collaboratively.
 
 [Open Issues](https://github.com/Godhand-Arnav/Scalar-finals/issues)
 
@@ -115,19 +119,19 @@ The environment is Gym-compatible and modular. We are now working on:
 
 ## Why You Should Use This, Not Just Star It
 
-Most repos just gather stars. FORGE-RL is built to run.
+Most research projects gather stars and never run. FORGE-RL is built to break that pattern.
 
-The notebook is a single file. No paid GPU needed. No labelled dataset required. You get a modular codebase ready for extension.
+The notebook is a single file. You do not need a paid GPU — Kaggle gives you 30 free hours a week. You do not need a labelled dataset. You get a modular codebase ready for extension.
 
-India has 500 million WhatsApp users. The next crisis is already being edited. The tools to fight it shouldn't be locked behind paywalls. Fork it and use it.
+India has 500 million WhatsApp users. The next crisis is already being edited. The tools to understand how that content is made should not be locked behind paywalls. Fork it and use it.
 
 ---
 
 ## A Closing Thought
 
-Better classifiers won't fix misinformation. Systems that understand *how* it works will. We proved a tiny, free-to-run model can reason about disinformation structurally. That is the proof of concept we need.
+Better classifiers will not solve misinformation. Systems that understand *how* it works will. Fact-checkers are tired and platform teams are drowning. We need tools that scale — and we just proved that a tiny, free-to-run language model can start to reason about disinformation structurally. That is the proof of concept we need.
 
-Fork it. Run it. Train it.
+Fork it. Run it. Train it on your own data.
 
 [GitHub Repository](https://github.com/Godhand-Arnav/Scalar-finals) — [Demo Space](https://huggingface.co/spaces/NeuralHU/forge-rl) — [HACKATHON_README](https://github.com/Godhand-Arnav/Scalar-finals/blob/main/HACKATHON_README.md)
 
