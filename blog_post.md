@@ -13,17 +13,17 @@ license: "MIT"
 
 ## Why We Built This
 
-Honestly? We were frustrated.
+In 2024, a single fabricated clip of a politician "confessing" to fraud was shared 14 million times before any fact‑checker flagged it. By the time the debunk went live, the damage was done — the narrative had already taken root.
 
-Misinformation detection tools are everywhere — but almost all of them stop at the question *"Is this true or false?"*. That is like hiring a detective who only tells you whether a crime happened, not *how* it was committed.
+Here is the thing that keeps us up at night: **the tools we use to fight misinformation are still fighting the last war.** Most detection systems ask one binary question — *real or fake?* — and call it a day. But sophisticated disinformation is not just "fake". It is *engineered*. A real statistic taken out of its 2009 context and presented as breaking news. A genuine expert quote attached to a claim they never made. A story that is technically accurate but stripped of every piece of nuance that gives it meaning.
 
-The harder, more important question is: **what tactics were used to construct this piece of misinformation in the first place?** Was the source laundered through a seemingly credible outlet? Was a genuine quote pulled out of context? Was a statistic technically accurate but temporally misleading?
+You cannot stop a disinformation campaign if you cannot see *how it was built*. You need to go upstream — past the headline, past the claim, all the way to the **tactics** used to construct it. That is forensic reasoning. And that is a problem that no open‑source tool was solving.
 
-These are the questions that forensic analysts actually ask. And they are the questions that **FORGE‑MA** is designed to answer.
+So we built one.
 
-We built this during the META AI Hackathon, and it started as a weekend experiment: *can we use reinforcement learning — specifically GRPO — to teach a tiny, free-to-run language model to trace the fingerprints of a disinformation campaign?*
+FORGE‑MA started as a question: *can a language model — not a massive one, but a genuinely small, free-to-run 0.5B model — learn to think like a forensic investigator if we train it with the right reward signal?* We built a custom reinforcement learning environment around eight real‑world deception tactics, defined a reward metric that measures forensic accuracy, and spent a hackathon weekend finding out.
 
-Spoiler: yes, and the results surprised even us.
+The answer is yes. And we think this is just the beginning.
 
 ---
 
