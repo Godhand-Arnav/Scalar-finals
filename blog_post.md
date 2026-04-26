@@ -31,7 +31,21 @@ So during the META AI Hackathon, we built FORGE-MA: a reinforcement learning pip
 
 We ran it for 100 steps. The reward nearly doubled.
 
-We think that matters.
+We think that matters. A lot.
+
+---
+
+## Why This Is Different From Every Other Misinformation Tool
+
+Here is the thing about existing fact-checking tools — they are all playing defence. You feed them a claim, they tell you if it is true. That is useful, but it is the equivalent of a doctor who can only tell you if you are sick, not what disease you have or how you caught it.
+
+FORGE-MA is a pathologist, not just a physician.
+
+When FORGE-MA analyses a claim, it does not just say "false". It says: "This claim was constructed using SOURCE_LAUNDER followed by TEMPORAL_SHIFT — someone took a real 2012 quote, attributed it to a credible institution, and presented it as a statement from yesterday." That is actionable intelligence. You can trace the campaign. You can find other content using the same fingerprint. You can build a case.
+
+Think of it this way. Every WhatsApp forward your uncle sends is not random — it was *designed*. Someone sat down and deliberately chose which deception tactics to combine to make it believable to a 60-year-old in a tier-2 city at 6 AM. FORGE-MA can read that design. No other open-source tool can.
+
+And because it is a *trained model*, not a rule-based system, it generalises. Feed it a claim it has never seen before in a domain it was never trained on — it still tries to reason about the forensic structure. It gets better every time you train it with more episodes. It runs on hardware you already have access to for free.
 
 ---
 
@@ -136,15 +150,29 @@ If any of this sounds like something you want to build with us, the issues page 
 
 ---
 
-## A Closing Thought
+## Why You Should Use This, Not Just Star It
+
+Most research projects get starred on GitHub and never run. We built FORGE-MA specifically to break that pattern.
+
+The notebook is a single file. You do not need to understand LoRA, GRPO, or Pydantic version hell to run it — all of that is handled in Cell 1. You do not need a paid GPU — Kaggle gives you 30 hours of free P100 time every week. You do not need a labelled dataset — the environment generates training data on its own.
+
+What you *do* get at the end is a model that has learned to reason forensically about misinformation claims, a reward curve that shows exactly how much it improved, and a modular codebase you can immediately extend for your own use case — whether that is Hindi-language fact-checking, political deepfake detection, or building a browser extension that annotates WhatsApp screenshots.
+
+India has 500 million WhatsApp users. The next election cycle is not far. The next health scare will come. The next riot-triggering video is probably being edited right now somewhere. The tools to understand how that content is made should not be locked behind expensive APIs or academic paywalls.
+
+This one is not. Fork it and use it.
+
+---
+
+
 
 The misinformation problem is not going to be solved by a better classifier. It is going to be solved by systems that understand *how* disinformation works — the tactics, the patterns, the forensic fingerprints that campaigns leave behind.
 
-We do not think we have solved it. But we have proved that a tiny, open-source, free-to-run language model can start to reason about it in a structured way — and that it gets meaningfully better when you give it the right reward signal.
+Fact-checkers are tired. Journalists are overworked. Platform moderation teams are drowning. We cannot hire our way out of this problem. We need tools that scale — and the only thing that scales like disinformation does is AI.
 
-That feels like a beginning worth building on.
+We do not think we have solved it. But we have proved that a tiny, open-source, free-to-run language model can start to reason about it in a structured way — and that it gets meaningfully better when you give it the right reward signal. That is not a small thing. That is the proof of concept that makes everything else possible.
 
-Fork it. Run it. Push it further. We want to see what you find.
+Fork it. Run it. Train it on your own data. Build the thing we did not have time to build during the hackathon. We want to see what you find.
 
 [GitHub Repository](https://github.com/Godhand-Arnav/Scalar-finals) — [Demo Space](https://huggingface.co/spaces/NeuralHU/forge-rl) — [HACKATHON_README](https://github.com/Godhand-Arnav/Scalar-finals/blob/main/HACKATHON_README.md)
 
