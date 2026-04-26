@@ -5,9 +5,9 @@ tags: ["reinforcement-learning", "GRPO", "LoRA", "misinformation", "forensics", 
 license: "MIT"
 ---
 
-# We Taught a Tiny LLM to Think Like a Misinformation Detective — Here's How
+# FORGE‑MA: Teaching a Tiny LLM to Unmask Fake News with Reinforcement Learning
 
-**What started as a hackathon side-project turned into something we genuinely believe could matter: a tiny 0.5B model that learns to forensically dissect fake news — trained in under 30 minutes on a free GPU.**
+**What if a 0.5B model — smaller than most chat assistants — could learn to think like a forensic investigator? We built it. In under 30 minutes. On a free GPU.**
 
 ---
 
@@ -15,130 +15,133 @@ license: "MIT"
 
 Honestly? We were frustrated.
 
-Every time we saw a viral misinformation post get debunked, the fact-check came hours — sometimes *days* — too late. By then the damage was done. But what bothered us even more was that the debunks rarely explained the *mechanics*. They said "this is false" but never "here's exactly how it was constructed to fool you."
+Misinformation detection tools are everywhere — but almost all of them stop at the question *"Is this true or false?"*. That is like hiring a detective who only tells you whether a crime happened, not *how* it was committed.
 
-A lie isn't random. It has a structure. Someone chose to take a real statistic and strip its source (`SOURCE_LAUNDER`). Someone deliberately shifted the date on a news story to make it feel recent (`TEMPORAL_SHIFT`). Someone took a genuine expert quote and ripped it out of context (`QUOTE_FABRICATE`).
+The harder, more important question is: **what tactics were used to construct this piece of misinformation in the first place?** Was the source laundered through a seemingly credible outlet? Was a genuine quote pulled out of context? Was a statistic technically accurate but temporally misleading?
 
-If we could teach a model to *identify those construction techniques* — not just label something true or false — we'd have something actually useful for analysts, journalists, and researchers.
+These are the questions that forensic analysts actually ask. And they are the questions that **FORGE‑MA** is designed to answer.
 
-That's FORGE‑MA. That's what we spent our hackathon building.
+We built this during the META AI Hackathon, and it started as a weekend experiment: *can we use reinforcement learning — specifically GRPO — to teach a tiny, free-to-run language model to trace the fingerprints of a disinformation campaign?*
+
+Spoiler: yes, and the results surprised even us.
 
 ---
 
-## What It Actually Does
+## What Is FORGE‑MA, Exactly?
 
-At its core, FORGE‑MA is a reinforcement learning pipeline. We take a small Qwen‑0.5B model — small enough to run free on Kaggle or Colab — and we train it with GRPO to identify **deception primitives**: the building blocks that bad actors combine to construct misinformation.
+FORGE‑MA stands for *Forensic Ordinance for Generative Reasoning Environments — Multi‑Agent*. The name is a mouthful, but the idea is simple:
 
-Instead of telling the model "the right answer is X", we let it generate 4 different responses, score each one using our **Tactic‑Edit‑Distance (TED) reward**, and nudge it toward the answers that scored highest. Repeat 100 times. Done.
+1. We define a vocabulary of **deception primitives** — atomic tactics like `SOURCE_LAUNDER`, `TEMPORAL_SHIFT`, `QUOTE_FABRICATE`, `CONTEXT_STRIP` — that real disinformation campaigns use.
+2. We create a training environment that generates synthetic misinformation claims, each assembled from a hidden chain of those primitives.
+3. We fine‑tune **Qwen‑0.5B** (a genuinely tiny model) using **GRPO** to predict that hidden chain — rewarding it every time it gets closer to the true forensic fingerprint.
 
-| Feature | What it means in plain English |
+The reward metric we use is called **Tactic‑Edit‑Distance (TED)** — it measures how many edits you would need to transform the model's predicted chain into the ground‑truth chain. Think of it as the AI equivalent of a forensic investigator's accuracy score.
+
+---
+
+## The Technical Bits (We Promise It's Worth Reading)
+
+Getting this to actually work on a free Kaggle/Colab GPU was... an adventure. Here is what the final system looks like:
+
+| Feature | What We Did |
 |---|---|
-| 🌍 **Universal Setup** | One cell. Paste it into Colab or Kaggle. It figures out the rest. |
-| 🧠 **GRPO Training** | The model generates 4 guesses per prompt and learns from which ones were closest. |
-| 🎯 **TED Reward** | We score how close the model's forensic chain is to the real one — like edit distance, but for deception tactics. |
-| ⚡ **Runs on a Free GPU** | P100 or T4. < 4 GB VRAM. ~5 minutes per 100 steps. |
-| 📖 **Fully Open Source** | MIT license. Fork it, extend it, break it. |
+| 🌍 **Universal Setup** | One bootstrap cell — works on Colab, Kaggle, and local. Auto‑detects the runtime, no manual config. |
+| 🧠 **GRPO Training** | 4 completions per prompt, LoRA adapters (r=16) so the FP16 base model stays frozen while adapters train in FP32. |
+| 🎯 **TED Reward** | Custom `reward_fn` scores each completion against the ground‑truth primitive chain. No labels needed — the environment generates them. |
+| ⚡ **Hardware Efficient** | P100/T4, < 4 GB VRAM, 100 steps in ~5 minutes. Genuinely free to run. |
+| 📖 **Open Source** | MIT license, pinned dependencies, `.env.example` for all API keys. |
 
-### The Core Training Loop (Simplified)
+One thing we want to flag: we hit a *lot* of dependency issues along the way — wrong `pydantic` versions, `mergekit` import crashes in bleeding‑edge `trl`, FP16 gradient errors. We fixed every single one and documented the solutions in the notebook comments, so **you won't have to**.
+
+### The Training Loop in Plain English
+
+For every training step, the model looks at a misinformation claim and generates 4 different forensic analyses. We score all 4 using TED. The ones that identified the deception tactics more accurately get a higher reward. GRPO then nudges the model's weights to make those better responses more likely next time — no reference model, no value network, no fuss.
 
 ```python
-# Wrap the base model with tiny LoRA adapters (only 0.1% of params are trained!)
+# 1. Wrap Qwen-0.5B with LoRA adapters (fixes the FP16 gradient crash!)
 model = get_peft_model(model, LoraConfig(r=16, task_type="CAUSAL_LM",
                        target_modules=["q_proj","k_proj","v_proj","o_proj"]))
 
-# Our custom reward: how close is the model's forensic chain to the truth?
+# 2. Custom TED reward — the heart of the whole system
 def reward_fn(completions, prompts=None, true_chains=None, **kwargs):
     return [tactic_edit_distance(extract_chain(c), true_chains[i])
             for i, c in enumerate(completions)]
 
-# Let GRPO do its thing — no value network, no reference model needed
+# 3. Let GRPO do its thing
+config = GRPOConfig(num_generations=4, generation_batch_size=4,
+                    max_steps=100, fp16=True)
 trainer = GRPOTrainer(model=model, reward_funcs=reward_fn,
-                      args=GRPOConfig(num_generations=4, max_steps=100, fp16=True),
-                      train_dataset=dataset)
+                      args=config, train_dataset=dataset)
 trainer.train()
 # → "Training complete!"
 ```
 
-The thing we love most about GRPO here: it doesn't need a separate "critic" network like PPO does. It's simpler, leaner, and it worked on our free GPU without running out of memory. That matters a lot when you're a small team with no budget.
-
 ---
 
-## Did It Actually Work?
-
-Yeah, it did — more than we expected.
+## The Results (This Is the Part We Are Proud Of)
 
 ![Reward curve – GRPO training on Qwen‑0.5B](/assets/grpo_reward_curve.png)
 
-Here's what happened during training:
-
-- **Early steps (0–30):** The model was basically guessing. Mean TED reward was around 0.02 — nearly random.
-- **Mid training (30–65):** Something clicked. The reward started climbing consistently as the model picked up the vocabulary of deception primitives.
-- **Step 65:** The model crossed the random baseline of 0.11. It was now *smarter than chance* at forensic analysis.
-- **Step 90:** Peak reward hit **0.20** — nearly double the baseline.
+The curve tells a clear story. At the start, the model is essentially guessing — mean TED reward hovering around 0.02. By step 65, it crosses the **random baseline of 0.11**, meaning it has genuinely learned something about forensic reasoning. By step 90, it peaks at **0.20 — nearly double the baseline**.
 
 ```
 [Step 100] Training complete!
-Evaluation on 20 fresh episodes → Mean TED = 0.174
-Journey: random(0.11) → untrained(~0.14) → GRPO-trained(0.174)
+Evaluation on 20 episodes → Mean TED = 0.174
+Improvement: random(0.11) → pre‑train(~0.14) → after GRPO(0.174)
 ```
 
-A 58% improvement over random, in 30 minutes, on a free GPU. For a hackathon proof-of-concept, we'll take it.
-
-*(And yes — the loss stayed near zero for most of training. That's totally normal in GRPO. The reward is what you watch, not the loss.)*
+Is 0.174 perfect? No. But this is a **0.5 billion parameter model**, trained for **100 steps**, on a **free GPU**. The fact that it learns anything meaningful about a structured forensic task in that time is — we think — genuinely exciting. And the architecture scales: swap in a 7B model with 4‑bit NF4 quantization and you can push this much further.
 
 ---
 
-## You Can Reproduce This Exactly
+## You Can Reproduce This. Right Now.
 
-We were obsessive about making this reproducible because honestly, papers and demos that you can't actually run are useless. Here's everything:
+We made this as easy to run as we possibly could:
 
-- ✅ **`notebooks/trl_forge_ma.ipynb`** — open in Colab or Kaggle, run Cell 1, done. Literally zero setup beyond that.
-- ✅ **Pinned versions** — `trl==0.15.1`, `pydantic==2.9.2` — we learned the hard way that bleeding-edge library updates will silently break your training loop.
-- ✅ **`.env.example`** — all the API slots labeled so you know exactly what key goes where.
-- ✅ **Auto-generated reward curve** — saved to `baselines/grpo_reward_curve.png` the moment training ends.
+- ✅ **One‑click notebook** — `notebooks/trl_forge_ma.ipynb`. Run Cell 1, run the rest, get a reward curve.
+- ✅ **Pinned dependencies** — `trl==0.15.1`, `pydantic==2.9.2`, `torch>=2.1.0`. No guessing which version breaks what.
+- ✅ **API template** — `.env.example` with labeled slots for every service we use (Groq, Cerebras, Mistral, OpenRouter, GNews).
+- ✅ **Quick‑start guide** — `HACKATHON_README.md` with 5 steps from zero to training, plus a demo script.
+- ✅ **Automatic reward curve** — `baselines/grpo_reward_curve.png` is generated at the end of training, ready to include in your write‑up.
 
-```yaml
-# .env.example — just fill in your free keys
-OPENAI_API_KEY="<groq-token>"           # Forensic Auditor agent
-CEREBRAS_API_KEY="<cerebras-token>"     # Context Historian agent
-MISTRAL_API_KEY="<mistral-token>"       # Narrative Critic agent
-OPENROUTER_API_KEY="<openrouter-token>" # NegotiatedSearch agents
-GNEWS_API_KEY="<gnews-token>"           # Live news tool
+```bash
+git clone https://github.com/Godhand-Arnav/Scalar-finals.git
+cd Scalar-finals
+# Open notebooks/trl_forge_ma.ipynb in Colab or Kaggle and hit Run All
 ```
 
 ---
 
-## Where This Goes Next
+## Where This Can Go
 
-We're excited about this beyond the hackathon. A few directions we're already thinking about:
+We built FORGE‑MA as a hackathon project, but we think the core idea has legs beyond that.
 
-- **Multilingual** — the same pipeline should work with `aya-23-8b` or `Mistral-7B-multilingual`. Misinformation isn't only in English.
-- **Bigger models** — the LoRA setup can scale up to 7B parameters with 4-bit NF4 quantization on a single A100 if you have access to one.
-- **HF Spaces demo** — we want to build a live interface where you paste any claim and get back a forensic primitive chain in seconds.
-- **Plugging into real newsrooms** — `MisInfoForensicsEnv` is designed to be modular. You can swap in your own claim dataset and reward function without touching the training code.
+The `MisInfoForensicsEnv` is a proper OpenAI Gym environment — you can drop any agent into it, not just the GRPO‑trained LLM. The `reward_fn` is modular — swap in a different reward signal and you have a completely different training objective. The primitive vocabulary in `env/primitives.py` is editable — extend it with new deception tactics without retraining from scratch.
 
-If any of this sounds useful to your work, we'd genuinely love to collaborate. Open an issue, send a PR, or just drop a comment below.
+Some directions we are genuinely excited about:
+- **Multilingual support** — train on non‑English claims using `aya-23-8b` or `Mistral-7B-multilingual`
+- **Larger models** — 7B with NF4 quantization, still fits on a single A100
+- **Live HF Space** — paste any claim, get a forensic primitive chain back in seconds
+- **Multi‑agent self‑play** — pit a red‑team generator against the forensic blue‑team agent in an adversarial loop
+
+If any of these sound interesting to you, the issues page is open and we would genuinely love the collaboration.
 
 [![Contribute](https://img.shields.io/badge/Contribute-Open%20Issues-blueviolet?style=flat-square)](https://github.com/Godhand-Arnav/Scalar-finals/issues)
 
 ---
 
-## Give It a Try
+## One More Thing
 
-The whole thing runs in a single notebook. No setup beyond running Cell 1.
+We spent a lot of time making sure this project works — not just in theory, but in practice, on the hardware most developers actually have access to. Every error we hit, we documented. Every dependency conflict, we resolved. Every config parameter that caused a crash, we fixed.
 
-```bash
-git clone https://github.com/Godhand-Arnav/Scalar-finals.git
-cd Scalar-finals
-# Open notebooks/trl_forge_ma.ipynb in Colab or Kaggle
-```
+If this project helps even one person build something useful in the misinformation‑detection space, that is more than enough for us.
 
-If you train your own version — especially if you get a better reward curve than us — tag your HF Space with `forge-ma`. We want to see what the community does with it.
+Fork it. Break it. Make it better.
 
 **→ [GitHub Repository](https://github.com/Godhand-Arnav/Scalar-finals)**
-**→ [Live Demo Space](https://huggingface.co/spaces/NeuralHU/forge-rl)**
-**→ [Full README](https://github.com/Godhand-Arnav/Scalar-finals/blob/main/HACKATHON_README.md)**
+**→ [Demo Space](https://huggingface.co/spaces/NeuralHU/forge-rl)**
+**→ [HACKATHON_README](https://github.com/Godhand-Arnav/Scalar-finals/blob/main/HACKATHON_README.md)**
 
 ---
 
-*Built at the META AI Hackathon by a small team that got very annoyed at misinformation and decided to do something about it. If forensic AI should exist anywhere, it should exist in the open.*
+*Built with too much caffeine and genuine enthusiasm for the META AI Hackathon. All feedback welcome.*
