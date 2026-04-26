@@ -13,9 +13,11 @@ A 0.5B model. A free GPU. A weekend. And a reward curve that doubled the baselin
 
 ## Why We Built This
 
-Picture this: it is 3 AM. A clip of a senator "admitting" to financial misconduct goes viral. By morning, it has 14 million views, trending hashtags in six countries, and a Wikipedia edit. By noon, a fact-check article comes out confirming it was fabricated from three separate videos stitched together.
+In 2018, a two-minute WhatsApp video of a man "kidnapping a child" spread through a village in Jharkhand. It was actually a public awareness clip shot in Pakistan. By the time anyone figured that out, five people had been lynched by a mob. The video had been forwarded so many times that no one remembered where it came from or what it originally meant.
 
-But by noon, it does not matter anymore.
+This is not a one-off. It is a pattern.
+
+In 2019, weeks before the general election, a deepfake video of Amit Shah circulated where he appeared to say the BJP would scrap reservations for OBCs. It never happened. The video was synthetic. But it spread through 50,000 WhatsApp groups in 48 hours — and WhatsApp University, as we like to call it, has no peer review process.
 
 The damage is not done when the lie spreads. It is done the moment the lie *feels* true to someone. And by the time a fact-checker catches up, that moment has long passed for millions of people.
 
@@ -37,18 +39,20 @@ We think that matters.
 
 The first thing we did was build a vocabulary of deception primitives — the atomic building blocks that real disinformation campaigns are assembled from:
 
-| Primitive | What It Means |
-|---|---|
-| `SOURCE_LAUNDER` | Attribute a false claim to a credible-sounding source |
-| `TEMPORAL_SHIFT` | Present old or future events as happening right now |
-| `QUOTE_FABRICATE` | Attach words to a real person that they never said |
-| `CONTEXT_STRIP` | Remove the context that makes a true statement misleading |
-| `CITATION_FORGE` | Invent or distort academic/official sources |
-| `NETWORK_AMPLIFY` | Use coordinated bot networks to manufacture consensus |
-| `SATIRE_REFRAME` | Take satirical content and present it as factual |
-| `ENTITY_SUBSTITUTE` | Swap real people, places, or dates to change the story |
+| Primitive | What It Means | Real Indian Example |
+|---|---|---|
+| `SOURCE_LAUNDER` | Attribute a false claim to a credible-sounding source | "AIIMS doctors confirm drinking cow urine cures COVID" — AIIMS never said this |
+| `TEMPORAL_SHIFT` | Present old or future events as happening right now | 2013 Muzaffarnagar riot footage shared in 2020 as "fresh violence today" |
+| `QUOTE_FABRICATE` | Attach words to a real person that they never said | The 2019 deepfake of Amit Shah on OBC reservations |
+| `CONTEXT_STRIP` | Remove the context that makes a true statement misleading | A satire article from The Fauxy shared as real news — happens every other week |
+| `CITATION_FORGE` | Invent or distort academic/official sources | "WHO confirms turmeric milk prevents coronavirus" — WHO said no such thing |
+| `NETWORK_AMPLIFY` | Use coordinated bot networks to manufacture consensus | 2021 Twitter trends in India manufactured by coordinated bot accounts |
+| `SATIRE_REFRAME` | Take satirical content and present it as factual | Onion-style headlines from Postcard News shared as breaking news |
+| `ENTITY_SUBSTITUTE` | Swap real people, places, or dates to change the story | Pakistani flood images shared as photos from recent Indian disasters |
 
 Every synthetic misinformation claim in our training environment is assembled from a hidden chain of these primitives. The model's job is to predict that chain from the claim text alone — like reading the recipe from the finished dish.
+
+If you have ever received a WhatsApp forward from a "concerned uncle" that starts with "Please share this immediately, very important —" you have seen at least three of these primitives working together.
 
 The reward signal we designed for this is called Tactic-Edit-Distance (TED): how many edits would you need to transform the model's predicted chain into the true one? The closer the prediction, the higher the reward. It is clean, differentiable, and directly measures what we care about.
 
