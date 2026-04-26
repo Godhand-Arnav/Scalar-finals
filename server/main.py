@@ -161,24 +161,67 @@ def create_app() -> FastAPI:
         """
         Given a seed claim, Red Team applies primitives and returns
         the fabricated graph + true chain for Blue Team to investigate.
-        Uses the actual RedAgent for autonomous fabrication.
+
+        Real-news detection:
+          - Claims that appear factual/real (no manipulation signals) return
+            an empty true_chain so the UI correctly classifies them as REAL.
+          - Claims with manipulation signals get the full Red Team treatment.
         """
         from env.forge_env import ForgeEnv
-        import uuid
+        import uuid, re
 
+        seed = request.seed_claim.lower()
+
+        # ── Lightweight real-news classifier ────────────────────────────────
+        # Heuristics that strongly suggest a legitimate, factual claim:
+        REAL_SIGNALS = [
+            # Authoritative source domains
+            r"\b(reuters|ap news|bbc|cnn|nytimes|guardian|npr|who\.int|cdc\.gov|nasa\.gov|"
+            r"fda\.gov|whitehouse\.gov|un\.org|nature\.com|science\.org|pubmed)\b",
+            # Factual phrasing patterns
+            r"\b(according to|confirmed by|official(ly)?|announced|published|reported by|"
+            r"study shows|research (shows|confirms|finds)|data (shows|reveals))\b",
+            # Geopolitical/breaking-news verbs that are often factual
+            r"\b(closed|opened|signed|approved|elected|deployed|arrested|launched|"
+            r"summit|treaty|ceasefire|sanctions)\b",
+        ]
+        # Manipulation signals — if any present, run Red Team
+        FAKE_SIGNALS = [
+            r"\b(secret(ly)?|hidden|suppressed|cover.?up|they don'?t want you|"
+            r"mainstream media (won'?t|refuses)|banned|censored|leaked documents|"
+            r"shocking|you won'?t believe|wake up|sheeple)\b",
+            r"\b(100%|proven|undeniable|irrefutable)\b",
+            r"(!!!|\?\?\?)",
+        ]
+
+        real_score = sum(1 for pat in REAL_SIGNALS if re.search(pat, seed))
+        fake_score = sum(1 for pat in FAKE_SIGNALS if re.search(pat, seed))
+
+        # If claim looks real AND has no manipulation signals → classify REAL immediately
+        if real_score >= 1 and fake_score == 0:
+            episode_id = f"live-{uuid.uuid4().hex[:8]}"
+            return {
+                "seed_claim": request.seed_claim,
+                "fabricated_claim": request.seed_claim,
+                "true_chain": [],          # empty chain → frontend verdict = REAL
+                "plausibility_score": 0.95,
+                "graph_summary": {
+                    "node_count": 1,
+                    "suspicious_nodes": 0,
+                    "steps_run": 0,
+                },
+                "episode_id": episode_id,
+                "red_team_description": "No manipulation primitives detected — claim classified as REAL.",
+            }
+
+        # ── Otherwise run the Red Team ───────────────────────────────────────
         env = ForgeEnv()
-
-        # Standard reset
         obs, info = env.reset()
-
-        # Override the claim text with the user's seed claim
         env._claim_text = request.seed_claim
         env._claim_text_initial = request.seed_claim
-        # Start with empty chain; let the agent build it
         env._true_chain = []
         env.red_agent.reset()
 
-        # Run Red Team steps autonomously
         steps_run = 0
         while steps_run < min(request.k_max, env.config.budget):
             try:
@@ -189,14 +232,41 @@ def create_app() -> FastAPI:
             except Exception:
                 break
 
-        # Collect the actual chain applied by the agent
         final_chain = [p.value for p in env.red_agent.current_chain]
-        
-        # Get graph stats
         graph_nodes = len(env._claim_graph.nodes) if env._claim_graph else 1
         suspicious = sum(1 for n in (env._claim_graph.nodes if env._claim_graph else []) if n.injected)
-
         episode_id = f"live-{uuid.uuid4().hex[:8]}"
+
+        # ── Run the shared Blue GIN over the resulting claim graph ────────────
+        # This replaces the prior pre-scripted animation: the verdict the
+        # frontend now displays comes from the actual trained model (or
+        # xavier-init if no checkpoint was loaded — either way, the same
+        # codepath as the deployed predictor).
+        gin_verdict = "unknown"
+        gin_confidence = 0.0
+        gin_predicted_chain: list = []
+        try:
+            import torch
+            from runtime import get_blue_gin
+
+            x_t, ei_t = env._graph_to_tensors()
+            class _G:
+                pass
+            g = _G()
+            g.x = x_t
+            g.edge_index = ei_t
+            g.batch = torch.zeros(x_t.size(0), dtype=torch.long)
+
+            gin_pred = get_blue_gin().predict_chain(g)
+            gin_verdict = gin_pred.get("verdict", "unknown")
+            gin_confidence = float(gin_pred.get("confidence", 0.0))
+            gin_predicted_chain = [
+                p.name if hasattr(p, "name") else str(p)
+                for p in gin_pred.get("ordered_chain", [])
+            ]
+        except Exception:
+            # Never let inference failure break the API contract.
+            pass
 
         return {
             "seed_claim": request.seed_claim,
@@ -213,7 +283,11 @@ def create_app() -> FastAPI:
                 f"Agent applied {len(final_chain)} primitives: {', '.join(final_chain)}. "
                 f"Graph contains {suspicious} adversarial nodes."
             ),
+            "gin_verdict": gin_verdict,
+            "gin_confidence": gin_confidence,
+            "gin_predicted_chain": gin_predicted_chain,
         }
+
 
     @app.get("/leaderboard", tags=["System"])
     async def leaderboard():

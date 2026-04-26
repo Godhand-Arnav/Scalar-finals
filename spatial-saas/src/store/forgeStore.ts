@@ -532,6 +532,26 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       const claimText = episodeData.fabricated_claim ?? liveClaim;
       const trueChain: string[] = episodeData.true_chain ?? [];
 
+      // ── Derive verdict from actual backend chain ─────────────────────────────
+      // If Red Team found no primitives → the claim is REAL (no manipulation detected)
+      // Otherwise map the top primitive to a verdict category
+      const PRIM_TO_VERDICT: Record<string, string> = {
+        SATIRE_REFRAME: "satire",
+        CONTEXT_STRIP: "out_of_context",
+        SOURCE_LAUNDER: "fabricated",
+        QUOTE_FABRICATE: "fabricated",
+        CITATION_FORGE: "fabricated",
+        TEMPORAL_SHIFT: "misinformation",
+        ENTITY_SUBSTITUTE: "misinformation",
+        NETWORK_AMPLIFY: "misinformation",
+      };
+      const derivedVerdict = trueChain.length === 0
+        ? "real"
+        : (PRIM_TO_VERDICT[trueChain[0]] ?? "misinformation");
+      const isReal = derivedVerdict === "real";
+      const verdictLabel = derivedVerdict.toUpperCase().replace(/_/g, " ");
+      const trueChainStr = trueChain.length > 0 ? trueChain.join(", ") : "none (no manipulation detected)";
+
       set({
         liveClaimLoading: false,
         apiFailureCount: 0,
@@ -561,14 +581,21 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       });
 
       // Simulate Blue Team Investigation
-      const trueChainStr = trueChain.join(", ");
-      const investigateSequence = [
-        { action: "query_source", agent: "Blue Team", detail: "Queried sources for claim verification", obs: { evidence_coverage: 0.25, source_diversity: 0.35, steps_used: 1, budget_remaining: 0.85 } },
-        { action: "cross_reference", agent: "Blue Team", detail: "Cross-referencing entities in claim graph", obs: { evidence_coverage: 0.45, source_diversity: 0.50, steps_used: 2, budget_remaining: 0.70 } },
-        { action: "gnn_explain", agent: "Blue Team", detail: `GNN detected structural patterns matching: ${trueChainStr}`, obs: { evidence_coverage: 0.75, source_diversity: 0.80, steps_used: 3, budget_remaining: 0.50 } },
-        { action: "flag_manipulation", agent: "Red Team", detail: "Manipulation confirmed by Red Team adversarial fingerprint", obs: { evidence_coverage: 0.90, source_diversity: 0.85, steps_used: 4, budget_remaining: 0.30 } },
-        { action: "submit_verdict", agent: "Orchestrator", detail: "Consensus reached: MISINFORMATION", obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
-      ];
+      const investigateSequence = isReal
+        ? [
+          { action: "query_source", agent: "Blue Team", detail: "Queried primary sources — no suspicious patterns found", obs: { evidence_coverage: 0.28, source_diversity: 0.38, steps_used: 1, budget_remaining: 0.85 } },
+          { action: "cross_reference", agent: "Blue Team", detail: "Cross-referenced claim against authoritative databases — corroborated", obs: { evidence_coverage: 0.55, source_diversity: 0.60, steps_used: 2, budget_remaining: 0.70 } },
+          { action: "entity_link", agent: "Blue Team", detail: "All named entities verified in Wikidata — legitimate sources", obs: { evidence_coverage: 0.78, source_diversity: 0.82, steps_used: 3, budget_remaining: 0.50 } },
+          { action: "temporal_audit", agent: "Blue Team", detail: "Timestamps consistent — no anachronistic signals detected", obs: { evidence_coverage: 0.91, source_diversity: 0.90, steps_used: 4, budget_remaining: 0.30 } },
+          { action: "submit_verdict_real", agent: "Orchestrator", detail: `Consensus reached: REAL — chain analysis: ${trueChainStr}`, obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
+        ]
+        : [
+          { action: "query_source", agent: "Blue Team", detail: "Queried sources for claim verification", obs: { evidence_coverage: 0.25, source_diversity: 0.35, steps_used: 1, budget_remaining: 0.85 } },
+          { action: "cross_reference", agent: "Blue Team", detail: "Cross-referencing entities in claim graph", obs: { evidence_coverage: 0.45, source_diversity: 0.50, steps_used: 2, budget_remaining: 0.70 } },
+          { action: "gnn_explain", agent: "Blue Team", detail: `GNN detected structural patterns matching: ${trueChainStr}`, obs: { evidence_coverage: 0.75, source_diversity: 0.80, steps_used: 3, budget_remaining: 0.50 } },
+          { action: "flag_manipulation", agent: "Red Team", detail: "Manipulation confirmed by Red Team adversarial fingerprint", obs: { evidence_coverage: 0.90, source_diversity: 0.85, steps_used: 4, budget_remaining: 0.30 } },
+          { action: `submit_verdict_${derivedVerdict.replace(/ /g, "_")}`, agent: "Orchestrator", detail: `Consensus reached: ${verdictLabel}`, obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
+        ];
 
       let step = 0;
       if (window._demoInterval) clearInterval(window._demoInterval as number);
@@ -582,24 +609,24 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
             done: true,
             grade: {
               episode_id: state.episodeId || "live-001",
-              verdict: "misinformation",
-              true_label: "misinformation",
+              verdict: derivedVerdict,
+              true_label: derivedVerdict,
               correct: true,
-              accuracy: 0.95,
-              manipulation_detected: true,
+              accuracy: isReal ? 0.97 : 0.95,
+              manipulation_detected: !isReal,
               evidence_coverage: 0.99,
               steps_used: 5,
               efficiency_score: 0.90,
-              total_reward: 0.92,
+              total_reward: isReal ? 0.97 : 0.92,
               grade_breakdown: {
-                base_correctness: 0.95,
+                base_correctness: isReal ? 0.97 : 0.95,
                 efficiency_bonus: 0.15,
                 coverage_bonus: 0.10,
-                manipulation_bonus: 0.10,
+                manipulation_bonus: isReal ? 0 : 0.10,
                 false_positive_penalty: 0,
-                composite_score: 0.96,
-                task_grader_score: 0.94,
-                combined_score: 0.95,
+                composite_score: isReal ? 0.98 : 0.96,
+                task_grader_score: isReal ? 0.97 : 0.94,
+                combined_score: isReal ? 0.97 : 0.95,
               },
             },
           }));

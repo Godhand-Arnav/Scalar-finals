@@ -176,4 +176,12 @@ class GINTrainer:
         self.stats.mean_offline_loss = mean_offline
         self.stats.record(mean_online, mean_offline, generation)
 
+        # ── 4. Persist checkpoint after every generation. ──────────────────────
+        # Without this, training is discarded on process restart and the
+        # deployed server reverts to xavier-init weights on every boot.
+        try:
+            self.gin.save_checkpoint()
+        except Exception as e:
+            print(f"WARNING: GINTrainer failed to save checkpoint: {e}")
+
         return self.stats

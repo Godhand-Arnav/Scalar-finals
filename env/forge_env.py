@@ -33,13 +33,23 @@ from rewards.red_step_reward import RedStepReward
 from red_team.red_agent import RedAgent
 from blue_team.gin_predictor import GINPredictor
 
-# Sample claims for demo episodes (no LLM needed)
+# Sample claims for demo episodes (no LLM needed).
+#
+# Manipulated claims (true_chain non-empty) and real-news claims (true_chain empty)
+# must both appear so the Blue GIN learns the "no manipulation" decision boundary.
 _DEMO_CLAIMS = [
+    # ── Manipulated ──────────────────────────────────────────────────────────
     ("Vaccines cause autism, leaked documents confirm.", [PrimitiveType.QUOTE_FABRICATE, PrimitiveType.SOURCE_LAUNDER]),
     ("Video shows 2015 protest mislabelled as 2024 riots.", [PrimitiveType.TEMPORAL_SHIFT, PrimitiveType.CONTEXT_STRIP]),
     ("Politician quoted saying 'immigrants are criminals' — source: satirical site.", [PrimitiveType.SATIRE_REFRAME, PrimitiveType.QUOTE_FABRICATE]),
     ("Study claims 90% efficacy — journal retracted, still circulating.", [PrimitiveType.CITATION_FORGE, PrimitiveType.NETWORK_AMPLIFY]),
     ("Scientist replaced with lookalike in doctored photo.", [PrimitiveType.ENTITY_SUBSTITUTE]),
+    # ── Real news (empty chain) — required so Blue can learn the negative class.
+    ("NASA's Perseverance rover collected its 24th rock sample on Mars.", []),
+    ("The European Central Bank held its benchmark interest rate steady at the September meeting.", []),
+    ("Researchers at MIT published a peer-reviewed paper on lithium-sulfur battery cycle stability.", []),
+    ("The IPCC released its latest synthesis report on global temperature anomalies.", []),
+    ("WHO confirmed the elimination of trachoma as a public health problem in two more countries.", []),
 ]
 
 
@@ -65,7 +75,10 @@ class ForgeEnv:
     def __init__(self, config: Optional[ForgeEnvConfig] = None):
         self.config = config or ForgeEnvConfig()
         self.red_agent = RedAgent(mode="greedy")
-        self.gin = GINPredictor()
+        # Use the process-wide GIN singleton so training updates here are
+        # visible to the deployed server (which used to hold a separate copy).
+        from runtime import get_blue_gin
+        self.gin = get_blue_gin()
         self.red_step_rewarder = RedStepReward(self.gin, alpha=1.0)
 
         # Episode state (reset each episode)
@@ -340,14 +353,26 @@ class ForgeEnv:
         predicted_chain = gin_result["ordered_chain"]
         gin_confidence  = gin_result.get("confidence", 0.5)
 
-        # Real consensus: vary based on GIN confidence
-        # High confidence → unanimous, medium → majority, low → split
-        if gin_confidence >= 0.75:
-            consensus_level = "unanimous"
-        elif gin_confidence >= 0.50:
-            consensus_level = "majority_3"
-        elif gin_confidence >= 0.30:
-            consensus_level = "split_2_2"
+        # Real MC-Dropout ensemble of N=4 stochastic forward passes — replaces
+        # the previous `[predicted_chain] * 4` (one prediction copied four
+        # times). Each ensemble member is a genuinely independent dropout
+        # sample, giving the consensus / entropy reward components real signal.
+        ensemble = self.gin.predict_chain_ensemble(g, n_agents=4)
+        predicted_chains_ensemble = [m["ordered_chain"] for m in ensemble] or [predicted_chain]
+
+        from collections import Counter
+        chain_keys = [tuple(p.value if hasattr(p, "value") else str(p) for p in c) for c in predicted_chains_ensemble]
+        if chain_keys:
+            top_count = Counter(chain_keys).most_common(1)[0][1]
+            n_total = len(chain_keys)
+            if top_count == n_total:
+                consensus_level = "unanimous"
+            elif top_count >= 3:
+                consensus_level = "majority_3"
+            elif top_count == 2:
+                consensus_level = "split_2_2"
+            else:
+                consensus_level = "all_different"
         else:
             consensus_level = "all_different"
 
@@ -359,7 +384,7 @@ class ForgeEnv:
             graph_after = copy.deepcopy(self._claim_graph)
 
         r = compute_reward(
-            predicted_chains=[predicted_chain] * 4,
+            predicted_chains=predicted_chains_ensemble,
             true_chain=self._true_chain,
             claim_text_before=self._claim_text_initial,
             claim_text_after=self._claim_text,

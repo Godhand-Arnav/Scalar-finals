@@ -12,8 +12,11 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
+import types
+
 import gymnasium as gym
 import numpy as np
+import torch
 
 from env.claim_graph import ClaimGraph
 from env.tasks import TASK_REGISTRY, BaseTask
@@ -181,6 +184,8 @@ class MisInfoForensicsEnv(gym.Env):
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
         assert not self._done, "Call reset() before step()"
+        assert self.graph is not None, "graph must be set — call reset() first"
+        assert self.current_task is not None, "current_task must be set — call reset() first"
         action_name = ACTIONS[action]
         reward = config.REWARD_CLIP_MIN
         terminated = False
@@ -232,12 +237,21 @@ class MisInfoForensicsEnv(gym.Env):
 
                 terminated = True
                 self._done = True
+
+                # Consult the shared Blue GIN so the trained model influences
+                # the deployed verdict signal. Without this, server-side
+                # episodes never benefited from any training that ran in
+                # ForgeEnv. Surfaced in info[] for the API layer to expose.
+                gin_verdict, gin_confidence, gin_chain = self._gin_verdict_for_graph()
                 info.update({
                     "verdict": predicted_label,
                     "true_label": self.graph.true_label,
                     "confidence": confidence,
                     "correct": predicted_label == self.graph.true_label,
                     "total_reward": reward,
+                    "gin_verdict": gin_verdict,
+                    "gin_confidence": gin_confidence,
+                    "gin_predicted_chain": gin_chain,
                 })
                 logger.info("[END] %s verdict=%s true=%s reward=%.3f",
                             self.episode_id, predicted_label, self.graph.true_label, reward)
@@ -290,7 +304,7 @@ class MisInfoForensicsEnv(gym.Env):
             except Exception as e:
                 logger.error("Error closing ToolRegistry: %s", e)
 
-    def render(self) -> Optional[dict]:
+    def render(self) -> Any:
 
         with self._graph_lock:
             if self.graph is None:
@@ -367,7 +381,7 @@ class MisInfoForensicsEnv(gym.Env):
                     from sentence_transformers import SentenceTransformer
                     self._embedder = SentenceTransformer(config.HF_EMBEDDING_MODEL)
             emb = self._embedder.encode(text, normalize_embeddings=True)
-            return emb.astype(np.float32)
+            return np.array(emb, dtype=np.float32)
         except Exception:
             return np.zeros(config.CLAIM_EMBED_DIM, dtype=np.float32)
 
@@ -379,6 +393,55 @@ class MisInfoForensicsEnv(gym.Env):
             cov = self.graph.evidence_coverage
             contra = min(self.graph.contradiction_surface_area / 3.0, 1.0)
             return min(0.5 + 0.3 * cov + 0.2 * contra, 0.99)
+
+    def _gin_verdict_for_graph(self) -> Tuple[Optional[str], float, List[str]]:
+        """Run the shared Blue GIN over the current claim graph and return
+        (verdict, confidence, ordered_primitive_names).
+
+        Returns ("unknown", 0.0, []) when the GIN, torch, or graph is unavailable.
+        Errors are swallowed because verdict scoring must never crash a step.
+        """
+        try:
+            from runtime import get_blue_gin
+
+            with self._graph_lock:
+                if self.graph is None:
+                    return "unknown", 0.0, []
+
+                # Build a minimal feature tensor from the graph nodes. We use
+                # node trust_score + a few scalar coverage signals as a 10-dim
+                # feature so the GIN sees real per-claim variation.
+                nodes = list(self.graph.nodes.values()) if hasattr(self.graph, "nodes") else []
+
+            if not nodes:
+                return "unknown", 0.0, []
+
+            feats = []
+            for n in nodes[:10]:
+                trust = float(getattr(n, "trust_score", 0.5) or 0.5)
+                injected = 1.0 if n.metadata.get("injected", False) else 0.0
+                retrieved = 1.0 if n.retrieved else 0.0
+                feats.append([trust, injected, retrieved, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+            x = torch.tensor(feats, dtype=torch.float32)
+            edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+            g = types.SimpleNamespace(
+                x=x,
+                edge_index=edge_index,
+                batch=torch.zeros(x.size(0), dtype=torch.long),
+            )
+
+            gin = get_blue_gin()
+            result = gin.predict_chain(g)
+            chain_names = [p.name if hasattr(p, "name") else str(p) for p in result.get("ordered_chain", [])]
+            return (
+                result.get("verdict", "unknown"),
+                float(result.get("confidence", 0.0)),
+                chain_names,
+            )
+        except Exception:
+            return "unknown", 0.0, []
 
     def get_episode_summary(self) -> dict:
         with self._graph_lock:

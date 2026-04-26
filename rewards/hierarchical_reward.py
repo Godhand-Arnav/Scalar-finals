@@ -36,7 +36,11 @@ from typing import List, Optional
 from env.primitives import PrimitiveType, K_MAX
 from rewards.tactic_edit_dist import tactic_edit_distance
 from rewards.tactic_pr import tactic_f1
-from rewards.plausibility import plausibility_score, compute_plausibility
+from rewards.plausibility import (
+    plausibility_score,
+    compute_plausibility,
+    semantic_drift_delta,
+)
 from rewards.budget_penalty import compute_budget_penalty, BudgetPenaltyResult
 
 # ── fixed weights ──────────────────────────────────────────────────────────────
@@ -196,23 +200,35 @@ def compute_reward(
     f1_component = W_F1 * f1
 
     # ── Plausibility delta ────────────────────────────────────────────────────
-    # CRITICAL BUG 1 FIX: Use separate before/after graphs so delta is non-zero.
-    # Priority: (1) explicit before+after graphs, (2) text-only fallback.
-    # The legacy `claim_graph` kwarg provides no delta signal and is ignored
-    # in favour of text-based scoring to avoid the permanently-zero bug.
-    if claim_graph_before is not None and claim_graph_after is not None:
+    # Primary signal: sentence-transformer cosine drift between the original
+    # claim and the post-Red-actions claim. A real semantic shift produces a
+    # non-zero delta; the previous regex/word-count scorer would return ~0
+    # for typical Red perturbations because it only measured surface features.
+    #
+    # Fallbacks (in order):
+    #   1. semantic_drift_delta(before, after) — sentence-transformer
+    #   2. compute_plausibility on before+after graphs
+    #   3. regex plausibility_score on raw text
+    plb_delta: float
+    drift = semantic_drift_delta(claim_text_before, claim_text_after)
+    if drift is not None:
+        # drift in [0, 2]; clamp to [0, 1] so it lives on the same scale as
+        # the regex scorer and the existing W_PLB weight stays meaningful.
+        plb_delta = max(0.0, min(1.0, drift))
+    elif claim_graph_before is not None and claim_graph_after is not None:
         try:
             plb_before = compute_plausibility(claim_graph_before)
             plb_after  = compute_plausibility(claim_graph_after)
+            plb_delta = plb_before - plb_after
         except Exception:
             plb_before = plausibility_score(claim_text_before)
             plb_after  = plausibility_score(claim_text_after)
+            plb_delta = plb_before - plb_after
     else:
-        # Text-only path (also covers legacy claim_graph= callers)
         plb_before = plausibility_score(claim_text_before)
         plb_after  = plausibility_score(claim_text_after)
+        plb_delta = plb_before - plb_after
 
-    plb_delta = plb_before - plb_after   # positive if claim became less plausible
     plb_component = W_PLB * max(-1.0, min(1.0, plb_delta))
 
     # ── Consensus bonus ───────────────────────────────────────────────────────

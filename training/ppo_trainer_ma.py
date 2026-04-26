@@ -1,9 +1,17 @@
 """
-PPO Trainer wrapper for FORGE-RL.
-SPEC (Master Prompt §Layer7):
-  - Wraps TRL PPOTrainer with ForgeEnv episode collection
-  - Supports demo/dry-run mode (no actual model needed) for CI
-  - Collects episodes in batches, computes rewards, logs stats
+REINFORCE Trainer wrapper for FORGE-RL (formerly mis-labeled as PPO).
+
+This module implements REINFORCE / Monte-Carlo policy gradient with a mean
+baseline — NOT PPO. It has no clipped surrogate objective, no value head,
+no GAE, and no KL constraint. Renamed from PPOTrainer to REINFORCETrainer
+to avoid mis-representing the algorithm in code or external claims.
+
+For backwards compatibility, the legacy `PPOTrainer` symbol still resolves
+to this class (with a DeprecationWarning).
+
+  - Wraps a Red-team policy with ForgeEnv episode collection
+  - Supports demo/dry-run mode (no model needed) for CI
+  - Collects episodes in batches, computes mean-baseline advantages, logs stats
   - GenerationTracker: increments per training epoch
 """
 from __future__ import annotations
@@ -53,18 +61,27 @@ class TrainingStats:
         }
 
 
-class PPOTrainer:
+class REINFORCETrainer:
     """
-    Lightweight PPO training loop for FORGE-RL.
+    Lightweight REINFORCE (Monte-Carlo policy gradient with mean baseline).
+
+    NOT PPO: there is no clipped surrogate, no value head, no GAE, no KL
+    constraint. The previous `PPOTrainer` name was a misnomer; the gradient
+    update below is exactly REINFORCE with a mean-reward baseline.
+
     In demo/CI mode runs full episodes but skips gradient updates.
-    Set use_trl=True and pass a model/tokenizer to enable real PPO updates.
+    Set use_trl=True and pass a model to enable the policy gradient update.
     """
 
     def __init__(
         self,
         env_config: Optional[ForgeEnvConfig] = None,
-        n_episodes_per_generation: int = 4,
-        max_generations: int = 3,
+        # Bumped from 4 → 50 per generation. The previous defaults yielded only
+        # 12 total training episodes (4 × 3) which is far below the minimum
+        # viable training volume for the GIN. New defaults total ≥ 500
+        # episodes, in line with the review's P7 minimum bar.
+        n_episodes_per_generation: int = 50,
+        max_generations: int = 10,
         use_trl: bool = False,
         model=None,
         tokenizer=None,
@@ -245,3 +262,23 @@ class PPOTrainer:
             expert_decision="REJECT", steps_taken=10, budget_limit=10,
             useful_tools=0, agent_verdicts={},
         )
+
+
+# ── Backwards-compatibility alias ────────────────────────────────────────────
+# The class was previously called `PPOTrainer`, but it implements REINFORCE.
+# Existing imports (`from training.ppo_trainer_ma import PPOTrainer`) keep
+# working through this alias — emit a DeprecationWarning when used.
+class PPOTrainer(REINFORCETrainer):
+    """Deprecated alias for REINFORCETrainer. Misleadingly named — this is
+    REINFORCE with a mean baseline, not PPO. Use REINFORCETrainer instead.
+    """
+
+    def __init__(self, *args, **kwargs):
+        import warnings
+        warnings.warn(
+            "PPOTrainer is a misnomer for REINFORCE — use REINFORCETrainer "
+            "instead. This alias will be removed in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)

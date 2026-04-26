@@ -2,9 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import List, Dict
+import logging
+from pathlib import Path
+from typing import List, Dict, Optional
 
 from env.primitives import PrimitiveType, K_MAX
+
+logger = logging.getLogger("forge.blue_gin")
+
+# Default checkpoint path. Resolved relative to repo root.
+_DEFAULT_GIN_CHECKPOINT = Path(__file__).resolve().parents[1] / "checkpoints" / "blue_gin" / "model.pt"
+_LEGACY_GIN_CHECKPOINT = Path(__file__).resolve().parents[1] / "checkpoints" / "gin_model.pt"
 
 # HIGH BUG 2 FIX: primitive → verdict mapping.
 # Previously all non-empty chains collapsed to "misinfo", making the
@@ -80,18 +88,13 @@ class BlueGIN(nn.Module):
 
 
 class GINPredictor:
-    def __init__(self):
+    def __init__(self, checkpoint_path: Optional[Path] = None, auto_load: bool = True):
         self.model = BlueGIN()
 
-        # ── MC Dropout fix (High Bug H3) ──────────────────────────────────────
-        # WRONG: model.train() enables dropout BUT also shifts BatchNorm to
-        #        use batch statistics (unstable on single-sample inference).
-        # CORRECT: model.eval() for stable BatchNorm, then manually enable
-        #          only Dropout layers so MC sampling still works.
         self.model.eval()
         for m in self.model.modules():
             if isinstance(m, nn.Dropout):
-                m.train()   # keep Dropout active; BatchNorm stays in eval mode
+                m.train()
 
         self.prims = [
             PrimitiveType.SOURCE_LAUNDER, PrimitiveType.TEMPORAL_SHIFT, PrimitiveType.ENTITY_SUBSTITUTE,
@@ -99,8 +102,75 @@ class GINPredictor:
             PrimitiveType.NETWORK_AMPLIFY, PrimitiveType.SATIRE_REFRAME
         ]
         self.initialize_pretrained_weights()
-        # Optimiser for supervised Blue Team training
         self._optimizer = torch.optim.AdamW(self.model.parameters(), lr=3e-4, weight_decay=1e-4)
+
+        # Track whether trained weights were successfully loaded.
+        self.checkpoint_loaded = False
+        self.checkpoint_path: Optional[Path] = None
+
+        if auto_load:
+            self._try_load_checkpoint(checkpoint_path)
+
+    def _try_load_checkpoint(self, explicit_path: Optional[Path] = None) -> None:
+        """Attempt to load a trained GIN checkpoint, falling back to xavier init.
+
+        Search order:
+          1. explicit_path argument (if provided)
+          2. checkpoints/blue_gin/model.pt (canonical)
+          3. checkpoints/gin_model.pt (legacy location)
+
+        On failure, the model retains its xavier_normal_ init and the predictor
+        keeps `checkpoint_loaded = False` so callers can surface the warning.
+        """
+        candidates = []
+        if explicit_path is not None:
+            candidates.append(Path(explicit_path))
+        candidates.extend([_DEFAULT_GIN_CHECKPOINT, _LEGACY_GIN_CHECKPOINT])
+
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                state = torch.load(path, map_location="cpu")
+                if isinstance(state, dict) and "state_dict" in state:
+                    state = state["state_dict"]
+                missing, unexpected = self.model.load_state_dict(state, strict=False)
+                if missing:
+                    logger.warning("GIN checkpoint at %s missing keys: %s", path, list(missing)[:5])
+                if unexpected:
+                    logger.warning("GIN checkpoint at %s unexpected keys: %s", path, list(unexpected)[:5])
+                self.checkpoint_loaded = True
+                self.checkpoint_path = path
+                # Re-apply MC-dropout eval mode after loading.
+                self.model.eval()
+                for m in self.model.modules():
+                    if isinstance(m, nn.Dropout):
+                        m.train()
+                logger.info("Loaded Blue GIN checkpoint from %s", path)
+                return
+            except Exception as e:
+                logger.warning("Failed to load GIN checkpoint at %s: %s", path, e)
+
+        logger.warning(
+            "No Blue GIN checkpoint found (searched %s). Using xavier init — "
+            "predictions will not be meaningful. Train and save a checkpoint via "
+            "GINPredictor.save_checkpoint().",
+            [str(p) for p in candidates],
+        )
+
+    def save_checkpoint(self, path: Optional[Path] = None) -> Path:
+        """Persist the current model weights so they survive process restarts."""
+        target = Path(path or _DEFAULT_GIN_CHECKPOINT)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), target)
+        self.checkpoint_loaded = True
+        self.checkpoint_path = target
+        logger.info("Saved Blue GIN checkpoint to %s", target)
+        return target
+
+    def load_checkpoint(self, path: Path) -> None:
+        """Explicitly load a checkpoint from `path`."""
+        self._try_load_checkpoint(Path(path))
 
     def initialize_pretrained_weights(self):
         """
@@ -180,6 +250,60 @@ class GINPredictor:
             "uncertainty": uncertainty,
             "verdict": verdict,
         }
+
+    def predict_chain_ensemble(self, graph_data, n_agents: int = 4) -> List[Dict]:
+        """Return N independent MC-Dropout chain predictions as a real ensemble.
+
+        Each "agent" is a stochastic forward pass through BlueGIN with dropout
+        active. Because dropout is enabled in eval mode here, repeated calls
+        produce *different* per-sample chains — converting the previous
+        `[predicted_chain] * 4` (which was one prediction copied four times)
+        into a genuine multi-sample ensemble that the consensus / entropy
+        reward components can read.
+
+        Returns a list of N dicts with the same shape as `predict_chain`.
+        """
+        if n_agents <= 0:
+            return []
+
+        if getattr(graph_data, 'x', None) is None or graph_data.x.size(0) == 0:
+            empty = {
+                "presence_probs": np.full((8,), 0.125),
+                "ordered_chain": [],
+                "confidence": 0.0,
+                "uncertainty": np.zeros(8),
+                "verdict": "unknown",
+            }
+            return [empty for _ in range(n_agents)]
+
+        # Make sure dropout is active so each forward pass is stochastic.
+        self.model.eval()
+        for m in self.model.modules():
+            if isinstance(m, nn.Dropout):
+                m.train()
+
+        results: List[Dict] = []
+        with torch.no_grad():
+            for _ in range(n_agents):
+                presence, _ = self.model(graph_data.x, graph_data.edge_index, graph_data.batch)
+                probs = presence.cpu().numpy()[0]
+                conf = float(np.mean(np.abs(probs - 0.5) * 2))
+                chain = []
+                for idx in np.argsort(probs)[::-1]:
+                    if probs[idx] > 0.5 and len(chain) < K_MAX:
+                        chain.append(self.prims[idx])
+                if chain:
+                    verdict = _PRIM_TO_VERDICT.get(chain[0], "misinfo")
+                else:
+                    verdict = "unknown"
+                results.append({
+                    "presence_probs": probs,
+                    "ordered_chain": chain,
+                    "confidence": conf,
+                    "uncertainty": np.zeros(8),
+                    "verdict": verdict,
+                })
+        return results
 
     def train_step(
         self,
