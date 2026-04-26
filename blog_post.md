@@ -163,8 +163,7 @@ India has 500 million WhatsApp users. The next election cycle is not far. The ne
 This one is not. Fork it and use it.
 
 ---
-
-
+## A Closing Thought
 
 The misinformation problem is not going to be solved by a better classifier. It is going to be solved by systems that understand *how* disinformation works — the tactics, the patterns, the forensic fingerprints that campaigns leave behind.
 
