@@ -84,13 +84,11 @@ trainer.train()
 
 ## The Results
 
-*(You can find detailed training graphs and reward curves in the visuals tab.)*
-
 ![Reward curve – GRPO training on Qwen-0.5B](/assets/grpo_reward_curve.png)
 
 Watch the curve. At step 0, the model knows nothing. By step 65, it crosses the random baseline of 0.11. By step 90, it hits 0.20 on a free GPU.
 
-This is a 0.5B model trained for 5 minutes. The architecture and reward signal scale effortlessly. Swap in a 7B model for 1000 steps, and you are in competitive territory.
+This is a 0.5B model trained for 5 minutes. The architecture and reward signal scale effortlessly. Swap in a 7B model for 1000 steps, and you are in competitive territory. (Note: All interactive training graphs and forensic chain visualisations are available in the visuals tab).
 
 ---
 
