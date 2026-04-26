@@ -20,10 +20,36 @@ TASK_SCORE_MAX = 0.999
 def _clip_open_interval(value: float) -> float:
     return float(max(TASK_SCORE_MIN, min(TASK_SCORE_MAX, float(value))))
 
-def get_db():
+import contextlib
+
+def _get_db_conn():
+    """Return a raw sqlite3.Connection. Caller is responsible for closing."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@contextlib.contextmanager
+def get_db():
+    """
+    Context manager that opens a DB connection, yields it, commits on success,
+    rolls back on error, and always closes the connection.
+
+    Usage::
+
+        with get_db() as conn:
+            conn.execute("SELECT ...")
+    """
+    conn = _get_db_conn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 
 def init_db():
     with get_db() as conn:
@@ -37,7 +63,6 @@ def init_db():
                 composite REAL
             )
         """)
-        conn.commit()
 
 init_db()
 
@@ -157,6 +182,5 @@ async def get_grade(episode_id: str):
             INSERT OR REPLACE INTO grades (episode_id, agent_id, correct, total_reward, composite)
             VALUES (?, ?, ?, ?, ?)
         """, (episode_id, agent_id, correct, record["total_reward"], total))
-        conn.commit()
 
     return grade

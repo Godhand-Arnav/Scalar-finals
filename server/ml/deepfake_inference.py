@@ -80,7 +80,11 @@ class DeepfakeDetector:
         try:
             self.device = device or ("cuda" if _torch.cuda.is_available() else "cpu")
             self.model = _timm.create_model("tf_efficientnet_b4_ns", pretrained=False, num_classes=1)
-            state = _torch.load(self.weights_path, map_location=self.device)
+            # weights_only=True prevents pickle code injection via crafted .pth files.
+            try:
+                state = _torch.load(self.weights_path, map_location=self.device, weights_only=True)
+            except TypeError:
+                state = _torch.load(self.weights_path, map_location=self.device)  # noqa: S614
             # Allow both raw state_dict and {"state_dict": ...} bundle layouts.
             if isinstance(state, dict) and "state_dict" in state:
                 state = state["state_dict"]

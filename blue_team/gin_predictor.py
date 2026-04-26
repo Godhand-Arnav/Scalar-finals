@@ -131,7 +131,13 @@ class GINPredictor:
             if not path.exists():
                 continue
             try:
-                state = torch.load(path, map_location="cpu")
+                # weights_only=True prevents arbitrary code execution from
+                # a crafted checkpoint file (available in PyTorch >= 1.13).
+                try:
+                    state = torch.load(path, map_location="cpu", weights_only=True)
+                except TypeError:
+                    # Older PyTorch (< 1.13) doesn't accept weights_only.
+                    state = torch.load(path, map_location="cpu")  # noqa: S614
                 if isinstance(state, dict) and "state_dict" in state:
                     state = state["state_dict"]
                 missing, unexpected = self.model.load_state_dict(state, strict=False)

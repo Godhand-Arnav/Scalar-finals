@@ -15,6 +15,7 @@ Endpoints:
 
 from __future__ import annotations
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -43,7 +44,39 @@ class FabricateRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 FORGE server starting — visit /docs for interactive API")
+
+    # ── Pre-warm Sentence Transformer ─────────────────────────────────────────
+    # Pre-warm the sentence-transformer so the first investigation request
+    # doesn't block the uvicorn worker for 30+ seconds.
+    try:
+        from sentence_transformers import SentenceTransformer
+        from env.misinfo_env import MisInfoForensicsEnv
+        if not getattr(MisInfoForensicsEnv, '_shared_embedder', None):
+            MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
+                config.HF_EMBEDDING_MODEL
+            )
+            logger.info("Sentence-transformer pre-warmed successfully.")
+        else:
+            logger.info("Sentence-transformer already loaded, skipping pre-warm.")
+    except Exception as warm_exc:
+        logger.warning("Embedder pre-warm failed: %s", warm_exc)
+
+    # ── Pre-warm Deepfake Detector ────────────────────────────────────────────
+    # Loads EfficientNet-B4 weights once at startup. Missing weights or missing
+    # deps (torchvision/timm/facenet-pytorch) are non-fatal; the route will
+    # return 503 instead of crashing the app.
+    try:
+        from server.ml.deepfake_inference import init_detector
+        det = init_detector()
+        if det is not None and det.ready:
+            logger.info("Deepfake detector pre-warmed on %s.", det.device)
+        else:
+            logger.info("Deepfake detector unavailable (missing weights or deps); endpoint will 503.")
+    except Exception as df_exc:
+        logger.warning("Deepfake pre-warm failed: %s", df_exc)
+
     yield
+
     logger.info("🛑 FORGE shutting down. Active episodes at close: %d", len(EPISODE_STORE))
     # Explicitly close tool registry DB connections before clearing store
     for record in EPISODE_STORE.values():
@@ -67,11 +100,18 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Restrict CORS to the configured frontend origin.
+    # Set FRONTEND_URL env var in production; defaults to localhost for dev.
+    _frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    _allowed_origins = ["http://localhost:3000", "http://localhost:7860", "http://127.0.0.1:3000"]
+    if _frontend_url not in _allowed_origins:
+        _allowed_origins.append(_frontend_url)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
 
     # ── Routers (imported here, after app is created, no circular dep) ────────
@@ -321,38 +361,8 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
         logger.error("Unhandled exception: %s", exc, exc_info=True)
-        return JSONResponse(status_code=500, content={"detail": str(exc)})
-
-    # ── Pre-warm Sentence Transformer ─────────────────────────────────────────
-    # Pre-warm the sentence-transformer so the first investigation request
-    # doesn't block the uvicorn worker for 30+ seconds.
-    try:
-        from sentence_transformers import SentenceTransformer
-        from env.misinfo_env import MisInfoForensicsEnv
-        if not hasattr(MisInfoForensicsEnv, '_shared_embedder') or \
-           MisInfoForensicsEnv._shared_embedder is None:
-            MisInfoForensicsEnv._shared_embedder = SentenceTransformer(
-                config.HF_EMBEDDING_MODEL
-            )
-            logger.info("Sentence-transformer pre-warmed successfully.")
-        else:
-            logger.info("Sentence-transformer already loaded, skipping pre-warm.")
-    except Exception as warm_exc:
-        logger.warning("Embedder pre-warm failed: %s", warm_exc)
-
-    # ── Pre-warm Deepfake Detector ────────────────────────────────────────────
-    # Loads EfficientNet-B4 weights once at startup. Missing weights or missing
-    # deps (torchvision/timm/facenet-pytorch) are non-fatal; the route will
-    # return 503 instead of crashing the app.
-    try:
-        from server.ml.deepfake_inference import init_detector
-        det = init_detector()
-        if det is not None and det.ready:
-            logger.info("Deepfake detector pre-warmed on %s.", det.device)
-        else:
-            logger.info("Deepfake detector unavailable (missing weights or deps); endpoint will 503.")
-    except Exception as df_exc:
-        logger.warning("Deepfake pre-warm failed: %s", df_exc)
+        # Never expose internal exception details to the client.
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     return app
 

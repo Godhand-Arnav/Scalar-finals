@@ -78,7 +78,8 @@ async def reset_env(req: Optional[ResetRequest] = None):
             info=info,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("reset_env failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to initialise episode.")
 
 
 @router.get("/state", response_model=StateResponse)

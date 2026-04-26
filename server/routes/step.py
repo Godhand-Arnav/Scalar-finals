@@ -1,10 +1,12 @@
 """Step execution routes (OpenEnv spec)."""
 
 from __future__ import annotations
+import logging
 from fastapi import APIRouter, HTTPException
 from server.schemas import StepRequest, StepResponse
 from server.state import EPISODE_STORE
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -22,6 +24,9 @@ async def take_step(req: StepRequest):
     try:
         obs, reward, terminated, truncated, info = env.step(req.action)
     except AssertionError as e:
+        # AssertionError text comes exclusively from our own env code, so it
+        # is safe to surface as a 400 detail (no user-controlled content).
+        logger.warning("step assertion (episode=%s): %s", eid, e)
         raise HTTPException(status_code=400, detail=str(e))
 
     done = terminated or truncated

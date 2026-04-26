@@ -46,17 +46,33 @@ async def detect_deepfake(file: UploadFile = File(...)) -> DeepfakeResponse:
                    "and torchvision/timm/facenet-pytorch are installed.",
         )
 
-    # MIME / extension gate (cheap).
+    # MIME + extension gate (both must pass; OR allows content-type spoofing).
     ctype = (file.content_type or "").lower()
-    if not (ctype.startswith(ALLOWED_PREFIX) or _validate_filename(file.filename)):
-        raise HTTPException(status_code=400, detail=f"Unsupported content-type: {ctype!r}")
+    mime_ok = ctype.startswith(ALLOWED_PREFIX)
+    ext_ok  = _validate_filename(file.filename)
+    if not (mime_ok and ext_ok):
+        detail = (
+            f"Unsupported content-type {ctype!r}" if not mime_ok
+            else f"Unsupported file extension for {file.filename!r}"
+        )
+        raise HTTPException(status_code=400, detail=detail)
 
-    # Read with size cap (avoid pulling huge files into memory).
-    data = await file.read()
+    # Chunked read: reject oversized uploads before pulling them into RAM.
+    # Reads in 64 KB chunks and aborts early if the running total exceeds MAX_BYTES.
+    # This prevents a trivial DoS where a client sends a multi-GB file.
+    chunks: list[bytes] = []
+    total_bytes = 0
+    async for chunk in file:
+        total_bytes += len(chunk)
+        if total_bytes > MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (>{MAX_BYTES // (1024 * 1024)} MB).",
+            )
+        chunks.append(chunk)
+    data = b"".join(chunks)
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty upload.")
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail=f"File too large (>{MAX_BYTES // (1024*1024)} MB).")
 
     # Decode.
     try:
@@ -71,7 +87,7 @@ async def detect_deepfake(file: UploadFile = File(...)) -> DeepfakeResponse:
         result = await loop.run_in_executor(None, detector.predict, image)
     except Exception as e:
         logger.exception("Deepfake inference crashed")
-        raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+        raise HTTPException(status_code=500, detail="Inference failed. See server logs.")
 
     return DeepfakeResponse(**result)
 
