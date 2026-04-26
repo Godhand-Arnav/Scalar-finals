@@ -1,5 +1,5 @@
 """
-EpisodeOutput — structured result of one full FORGE-MA episode.
+EpisodeOutput — structured result of one full FORGE-RL episode.
 SPEC (Master Prompt §Layer6):
   - Immutable dataclass (frozen=True)
   - JSON-serializable via to_dict() / from_dict()

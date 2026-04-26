@@ -27,7 +27,7 @@ def check(name, fn):
         results.append((name, False))
 
 
-print("\nFORGE-MA System Verification\n")
+print("\nFORGE-RL System Verification\n")
 
 print("── Package imports ──────────────────────────")
 check("blue_team.society_of_thought",  lambda: __import__("blue_team.society_of_thought"))
@@ -85,7 +85,7 @@ def test_openenv():
     p = Path("openenv.yaml")
     if p.exists():
         with open(p) as f: cfg = yaml.safe_load(f)
-        assert cfg["name"] == "forge-ma"
+        assert cfg["name"] == "FORGE-RL"
         assert cfg["version"] == "2.0.0"
         assert cfg["observation_space"]["type"] == "Box"
         assert cfg["reward_range"] == [0.001, 0.999]

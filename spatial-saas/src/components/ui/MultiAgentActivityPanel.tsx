@@ -228,8 +228,7 @@ const AgentZone = memo(function AgentZone({
       animate={glowControls}
       className={`relative flex-1 min-w-0 rounded-2xl border ${config.borderClass}
         bg-gradient-to-br ${config.gradientFrom} ${config.gradientTo}
-        bg-slate-900/60 backdrop-blur-[120px]
-        overflow-hidden`}
+        glass-dark overflow-hidden`}
       style={{ willChange: "box-shadow" }}
     >
       {/* Ripple element (only animates on DECISION for Blue) */}
@@ -273,34 +272,34 @@ const AgentZone = memo(function AgentZone({
               />
             </div>
             <div>
-              <p className="text-[11px] font-black text-white tracking-wide leading-none">
+              <p className="text-xs font-bold text-white tracking-wide leading-none">
                 {config.label}
               </p>
-              <p className="text-[8px] text-slate-500 tracking-wider mt-0.5">
+              <p className="text-[10px] font-semibold text-slate-300 tracking-wider mt-1">
                 {config.role}
               </p>
             </div>
           </div>
           <span
-            className={`text-[7px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${config.badgeClasses}`}
+            className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase tracking-widest ${config.badgeClasses}`}
           >
             {agentLogs.length} ops
           </span>
         </div>
 
         {/* Latest action */}
-        <div className="bg-black/25 rounded-xl p-2.5 min-h-[40px] flex flex-col justify-center border border-white/[0.03]">
+        <div className="bg-black/40 rounded-xl p-3 min-h-[50px] flex flex-col justify-center border border-white/5 shadow-inner">
           {lastAction ? (
             <>
-              <p className="text-[8px] font-mono font-bold text-white/70 uppercase tracking-wider leading-none">
+              <p className="text-[9px] font-mono font-bold text-white tracking-wider leading-none drop-shadow-sm">
                 {lastAction.action.replace(/_/g, " ")}
               </p>
-              <p className="text-[9px] text-slate-400 leading-snug mt-1 line-clamp-2">
+              <p className="text-xs text-slate-200 font-medium leading-snug mt-1.5 line-clamp-2 drop-shadow-sm">
                 {lastAction.text}
               </p>
             </>
           ) : (
-            <p className="text-[8px] text-slate-600 italic">
+            <p className="text-[10px] text-slate-400 font-medium italic">
               {isActive ? "Awaiting task…" : "Idle"}
             </p>
           )}
@@ -308,9 +307,9 @@ const AgentZone = memo(function AgentZone({
 
         {/* Score bar */}
         <div className="mt-auto">
-          <div className="flex justify-between text-[8px] mb-1">
-            <span className="text-slate-500 tracking-wide">CONTRIBUTION</span>
-            <span className="font-mono text-white/50">
+          <div className="flex justify-between text-[10px] mb-1">
+            <span className="text-slate-300 font-semibold tracking-wide">CONTRIBUTION</span>
+            <span className="font-mono text-white font-bold">
               {Math.min(0.99, parseFloat(totalReward.toFixed(3)))}
             </span>
           </div>
@@ -327,25 +326,25 @@ const AgentZone = memo(function AgentZone({
         </div>
 
         {/* Recent ops trail */}
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           {agentLogs.slice(-3).map((l) => (
-            <div key={l.id} className="flex items-center gap-1.5">
+            <div key={l.id} className="flex items-center gap-2">
               <span
-                className="w-[3px] h-[3px] rounded-full shrink-0"
+                className="w-1 h-1 rounded-full shrink-0"
                 style={{ backgroundColor: config.activeColor }}
               />
-              <span className="text-[7px] text-slate-500 font-mono truncate">
+              <span className="text-[9px] text-slate-300 font-mono font-medium truncate">
                 {l.action.replace(/_/g, " ")}
               </span>
               {l.reward !== undefined && (
-                <span className="ml-auto text-[7px] font-mono text-emerald-400/70 shrink-0">
+                <span className="ml-auto text-[9px] font-mono font-bold text-emerald-400 shrink-0">
                   +{l.reward.toFixed(3)}
                 </span>
               )}
             </div>
           ))}
           {agentLogs.length === 0 && (
-            <span className="text-[7px] text-slate-700 italic">No activity</span>
+            <span className="text-[10px] text-slate-500 font-medium italic">No activity</span>
           )}
         </div>
       </motion.div>
@@ -380,9 +379,8 @@ export const MultiAgentActivityPanel = memo(function MultiAgentActivityPanel() {
 
       {/* Agent zones — horizontal glass panel */}
       <div
-        className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-[20px]
-          bg-slate-900/40 backdrop-blur-[120px] border border-white/[0.05]
-          shadow-[0_0_60px_rgba(0,0,0,0.3)]"
+        className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 rounded-[24px]
+          bg-transparent"
       >
         {AGENTS.map((agent) => (
           <AgentZone

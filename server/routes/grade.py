@@ -49,7 +49,7 @@ init_db()
 async def grade_summary():
     """Aggregate grade statistics across all completed episodes."""
     with get_db() as conn:
-        row = conn.execute("SELECT COUNT(*) as n, AVG(correct) as acc, AVG(total_reward) as r_avg FROM grades").fetchone()
+        row = conn.execute("SELECT COUNT(*) as n, AVG(correct) as acc, AVG(composite) as r_avg FROM grades").fetchone()
     
     n = row["n"] if row["n"] else 0
     if n == 0:

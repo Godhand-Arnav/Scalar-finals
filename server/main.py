@@ -78,10 +78,12 @@ def create_app() -> FastAPI:
     from server.routes.episode import router as episode_router  # noqa: E402
     from server.routes.step import router as step_router  # noqa: E402
     from server.routes.grade import router as grade_router  # noqa: E402
+    from server.routes.deepfake import router as deepfake_router  # noqa: E402
 
     app.include_router(episode_router, prefix="", tags=["OpenEnv"])
     app.include_router(step_router, prefix="", tags=["OpenEnv"])
     app.include_router(grade_router, prefix="/episodes", tags=["Grading"])
+    app.include_router(deepfake_router, prefix="", tags=["Deepfake"])
 
     # ── Static endpoints ──────────────────────────────────────────────────────
     from fastapi.responses import RedirectResponse
@@ -221,7 +223,7 @@ def create_app() -> FastAPI:
                 SELECT 
                     agent_id,
                     AVG(correct) as accuracy,
-                    AVG(total_reward) as mean_reward,
+                    AVG(composite) as mean_reward,
                     COUNT(*) as episodes_played
                 FROM grades
                 GROUP BY agent_id
@@ -263,6 +265,20 @@ def create_app() -> FastAPI:
             logger.info("Sentence-transformer already loaded, skipping pre-warm.")
     except Exception as warm_exc:
         logger.warning("Embedder pre-warm failed: %s", warm_exc)
+
+    # ── Pre-warm Deepfake Detector ────────────────────────────────────────────
+    # Loads EfficientNet-B4 weights once at startup. Missing weights or missing
+    # deps (torchvision/timm/facenet-pytorch) are non-fatal; the route will
+    # return 503 instead of crashing the app.
+    try:
+        from server.ml.deepfake_inference import init_detector
+        det = init_detector()
+        if det is not None and det.ready:
+            logger.info("Deepfake detector pre-warmed on %s.", det.device)
+        else:
+            logger.info("Deepfake detector unavailable (missing weights or deps); endpoint will 503.")
+    except Exception as df_exc:
+        logger.warning("Deepfake pre-warm failed: %s", df_exc)
 
     return app
 

@@ -54,13 +54,14 @@ button, a, [role="button"], label {
 @layer utilities {
   /* Light glassmorphism (hero / navbar / feature cards) */
   .glass-panel {
-    @apply bg-white/10 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)];
+    @apply relative bg-slate-900/30 backdrop-blur-xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.6)]
+           before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-white/5 before:pointer-events-none;
   }
 
   /* Dark glassmorphism (FORGE command center) */
   .glass-dark {
-    @apply bg-slate-900/40 backdrop-blur-[60px] border border-white/10
-           shadow-[0_0_100px_rgba(0,255,255,0.04),inset_0_1px_0_rgba(255,255,255,0.06)];
+    @apply relative bg-slate-900/30 backdrop-blur-xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.6)]
+           before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-white/5 before:pointer-events-none;
   }
 
   /* Canvas utility */

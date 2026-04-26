@@ -47,7 +47,7 @@ blog_content = blog_content.replace("V1_TED_PLACEHOLDER", str(v1_ted))
 
 # Upload to HuggingFace blog
 api = HfApi(token=HF_TOKEN)
-repo_id = f"{USERNAME}/forge-ma"
+repo_id = f"{USERNAME}/FORGE-RL"
 
 try:
     api.upload_file(

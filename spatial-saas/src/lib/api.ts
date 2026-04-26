@@ -137,6 +137,28 @@ export interface LeaderboardResponse {
   message?: string;
 }
 
+export interface DeepfakeAnalysis {
+  pixel_anomaly: number;
+  frequency_noise: number;
+}
+
+export interface DeepfakeResult {
+  verdict: "REAL" | "DEEPFAKE";
+  confidence: number;
+  analysis: DeepfakeAnalysis;
+  face_detected: boolean;
+  inference_ms: number;
+}
+
+export interface DeepfakeStatus {
+  ready: boolean;
+  reason?: string;
+  device?: string;
+  weights_path?: string;
+  threshold?: number;
+  val_accuracy?: number;
+}
+
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const forge = {
@@ -173,3 +195,24 @@ export const forge = {
       "/episodes/grades/summary"
     ),
 };
+
+// ─── Deepfake Detection ───────────────────────────────────────────────────────
+// Bypasses apiFetch because multipart/form-data must NOT set Content-Type
+// manually — the browser sets the boundary automatically.
+
+export async function detectDeepfake(file: File): Promise<DeepfakeResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${BASE}/detect-deepfake`, { method: "POST", body: fd });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? res.statusText);
+  }
+  return res.json() as Promise<DeepfakeResult>;
+}
+
+export async function deepfakeStatus(): Promise<DeepfakeStatus> {
+  const res = await fetch(`${BASE}/detect-deepfake/status`);
+  if (!res.ok) return { ready: false, reason: "unreachable" };
+  return res.json();
+}

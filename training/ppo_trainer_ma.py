@@ -1,5 +1,5 @@
 """
-PPO Trainer wrapper for FORGE-MA.
+PPO Trainer wrapper for FORGE-RL.
 SPEC (Master Prompt §Layer7):
   - Wraps TRL PPOTrainer with ForgeEnv episode collection
   - Supports demo/dry-run mode (no actual model needed) for CI
@@ -55,7 +55,7 @@ class TrainingStats:
 
 class PPOTrainer:
     """
-    Lightweight PPO training loop for FORGE-MA.
+    Lightweight PPO training loop for FORGE-RL.
     In demo/CI mode runs full episodes but skips gradient updates.
     Set use_trl=True and pass a model/tokenizer to enable real PPO updates.
     """
@@ -220,7 +220,7 @@ class PPOTrainer:
 
                 stix_json = generate_stix2_bundle(
                     _last_ep,
-                    campaign_name=f"FORGE-MA Training Gen {gen}",
+                    campaign_name=f"FORGE-RL Training Gen {gen}",
                     claim_text=getattr(_last_ep, "claim_text", ""),
                 )
                 with open("graphify-out/STIX_BUNDLE.json", "w", encoding="utf-8") as _f:

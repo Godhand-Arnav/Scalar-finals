@@ -3,7 +3,7 @@ import re
 def create_report(episode_id: str, root_claim: str) -> str:
     """Returns initial Markdown Evidence Report string."""
     truncated_claim = root_claim[:100] + ("..." if len(root_claim) > 100 else "")
-    return f"""## FORGE-MA Evidence Report — Episode {episode_id}
+    return f"""## FORGE-RL Evidence Report — Episode {episode_id}
 ### Claim
 {truncated_claim}
 

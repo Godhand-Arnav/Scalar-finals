@@ -1,6 +1,6 @@
 """
-ClaimBuster vs FORGE-MA comparison.
-Proves FORGE-MA adds interpretability that ClaimBuster cannot.
+ClaimBuster vs FORGE-RL comparison.
+Proves FORGE-RL adds interpretability that ClaimBuster cannot.
 Run: python scripts/claimbuster_eval.py
 
 Get free ClaimBuster API key at: https://idir.uta.edu/claimbuster/
@@ -72,7 +72,7 @@ def check_forge_ma(claim: str) -> dict:
 
 
 if __name__ == "__main__":
-    print("ClaimBuster vs FORGE-MA Comparison")
+    print("ClaimBuster vs FORGE-RL Comparison")
     print(f"Evaluating {len(EVAL_CLAIMS)} claims\n")
 
     results = []
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         cb_verdict = "fabricated" if cb_result.get("score", 0) > 0.5 else "real"
         cb_correct = (cb_verdict == true_label)
 
-        # FORGE-MA — verdict + tactic chain + oversight report
+        # FORGE-RL — verdict + tactic chain + oversight report
         fm_result = check_forge_ma(claim)
         fm_chain = fm_result.get("true_chain", [])
         fm_correct = len(fm_chain) > 0
@@ -111,9 +111,9 @@ if __name__ == "__main__":
     print(f"\n{'=' * 60}")
     print(f"RESULTS:")
     print(f"  ClaimBuster accuracy:        {cb_accuracy:.1%}")
-    print(f"  FORGE-MA audit trail rate:   {fm_audit_rate:.1%}")
+    print(f"  FORGE-RL audit trail rate:   {fm_audit_rate:.1%}")
     print(f"\n  ClaimBuster tells you: real or fake.")
-    print(f"  FORGE-MA tells you: HOW it was faked.")
+    print(f"  FORGE-RL tells you: HOW it was faked.")
     print(f"  That's the difference between a classifier and an investigator.")
     print(f"{'=' * 60}")
 

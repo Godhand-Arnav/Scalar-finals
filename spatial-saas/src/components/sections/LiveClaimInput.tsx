@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, AlertCircle, Loader2 } from "lucide-react";
 import { useForgeStore } from "@/store/forgeStore";
@@ -24,7 +24,7 @@ export default function LiveClaimInput() {
       animate={{ opacity: 1, y: 0 }}
       className="w-full mb-6"
     >
-      <div className="relative rounded-2xl bg-slate-900/70 border border-white/10 backdrop-blur-xl p-4 shadow-[0_0_30px_rgba(20,184,166,0.08)]">
+      <div className="relative rounded-2xl glass-panel p-4">
         {/* Header */}
         <div className="flex items-center gap-2 mb-3">
           <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/25 flex items-center justify-center">

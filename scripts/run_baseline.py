@@ -1,5 +1,5 @@
 """
-FORGE-MA Baseline Inference Runner.
+FORGE-RL Baseline Inference Runner.
 Run: python scripts/run_baseline.py
 
 Outputs baselines/results.json with measured TED for v0 and v1.
@@ -168,7 +168,7 @@ def run_episodes(agent_fn, n_episodes=50, label="v0"):
 if __name__ == "__main__":
     os.makedirs("baselines", exist_ok=True)
 
-    print("FORGE-MA Baseline Inference Runner")
+    print("FORGE-RL Baseline Inference Runner")
     print("This produces the REAL numbers for mock_data.py")
     print("Run time: ~10-20 minutes on CPU")
 

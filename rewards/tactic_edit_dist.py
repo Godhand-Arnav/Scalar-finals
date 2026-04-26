@@ -1,5 +1,5 @@
 """
-Tactic Edit Distance (TED) scorer for FORGE-MA.
+Tactic Edit Distance (TED) scorer for FORGE-RL.
 
 PRD v9.0 Section 3.1 specification:
   TED = 0.60 * positional_score + 0.40 * set_overlap_score

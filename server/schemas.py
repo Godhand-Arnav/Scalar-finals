@@ -3,7 +3,7 @@ server/schemas.py — OpenEnv Compatible API schemas
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 class ResetRequest(BaseModel):
@@ -90,3 +90,18 @@ class GradeResponse(BaseModel):
     @classmethod
     def clip_to_open_interval(cls, v):
         return round(float(max(0.001, min(0.999, float(v)))), 4)
+
+
+# ─── Deepfake Detection ───────────────────────────────────────────────────────
+
+class DeepfakeAnalysis(BaseModel):
+    pixel_anomaly: float = Field(..., ge=0.0, le=1.0)
+    frequency_noise: float = Field(..., ge=0.0, le=1.0)
+
+
+class DeepfakeResponse(BaseModel):
+    verdict: Literal["REAL", "DEEPFAKE"]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    analysis: DeepfakeAnalysis
+    face_detected: bool = True
+    inference_ms: float = Field(default=0.0, ge=0.0)

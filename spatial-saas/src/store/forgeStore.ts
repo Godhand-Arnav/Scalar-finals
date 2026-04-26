@@ -12,6 +12,13 @@ import {
   type LeaderboardEntry,
 } from "@/lib/api";
 
+declare global {
+  interface Window {
+    _demoInterval?: number | NodeJS.Timeout | null;
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
+
 // ─── Log entry (mirrors backend trace) ───────────────────────────────────────
 export interface LogEntry {
   id: number;
@@ -109,6 +116,10 @@ interface ForgeState {
   predictedChain: string[];
   gnnNodeImportance: Record<string, number>;
 
+  // ── Dive Transition State ───────────────────────────────────────────────────
+  isDiving: boolean;
+  divePhase: "idle" | "diving" | "landing" | "dashboard";
+
   // ─── Actions ────────────────────────────────────────────────────────────────
   init: () => Promise<void>;
   setSelectedTask: (name: string) => void;
@@ -125,6 +136,11 @@ interface ForgeState {
   submitLiveClaim: () => Promise<void>;
   activateFallback: () => void;
   resetFallback: () => void;
+
+  // Dive Actions
+  startDive: () => void;
+  resetDive: () => void;
+  setDivePhase: (phase: "idle" | "diving" | "landing" | "dashboard") => void;
 }
 
 // ─── Pre-recorded Plandemic fallback episode ──────────────────────────────────
@@ -139,27 +155,27 @@ const PLANDEMIC_FALLBACK: EpisodeData = {
   expertFeedback: "All 4 tactics identified. Bot network confirmed via network_cluster. Recommended for enforcement.",
   recommendedAction: "REMOVE",
   societyVotes: {
-    forensicAuditor:  { verdict: "fabricated", chain: ["SOURCE_LAUNDER", "ENTITY_SUBSTITUTE"], confidence: 0.91 },
-    contextHistorian: { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "CONTEXT_STRIP"],    confidence: 0.87 },
-    graphSpecialist:  { verdict: "fabricated", chain: ["NETWORK_AMPLIFY", "SOURCE_LAUNDER"],   confidence: 0.95 },
-    narrativeCritic:  { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "SATIRE_REFRAME"],   confidence: 0.82 },
+    forensicAuditor: { verdict: "fabricated", chain: ["SOURCE_LAUNDER", "ENTITY_SUBSTITUTE"], confidence: 0.91 },
+    contextHistorian: { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "CONTEXT_STRIP"], confidence: 0.87 },
+    graphSpecialist: { verdict: "fabricated", chain: ["NETWORK_AMPLIFY", "SOURCE_LAUNDER"], confidence: 0.95 },
+    narrativeCritic: { verdict: "fabricated", chain: ["QUOTE_FABRICATE", "SATIRE_REFRAME"], confidence: 0.82 },
   },
   toolLog: [
-    { tool: "query_source",    finding: "marketpulse.net trust=0.12 — suspicious",         primitive: "SOURCE_LAUNDER"    },
-    { tool: "trace_origin",    finding: "Intermediate domain marketpulse.net detected",     primitive: "SOURCE_LAUNDER"    },
-    { tool: "entity_link",     finding: "CDC replaced by NIAID — entity substitution",      primitive: "ENTITY_SUBSTITUTE" },
-    { tool: "quote_search",    finding: "Fauci quote not found in any verified source",     primitive: "QUOTE_FABRICATE"   },
-    { tool: "network_cluster", finding: "47 coordinated bot accounts amplifying claim",     primitive: "NETWORK_AMPLIFY"   },
-    { tool: "cross_reference", finding: "PolitiFact PANTS ON FIRE, FactCheck.org FALSE",   primitive: null                },
-    { tool: "temporal_audit",  finding: "Patent application 4yr before claim date",         primitive: "TEMPORAL_SHIFT"    },
+    { tool: "query_source", finding: "marketpulse.net trust=0.12 — suspicious", primitive: "SOURCE_LAUNDER" },
+    { tool: "trace_origin", finding: "Intermediate domain marketpulse.net detected", primitive: "SOURCE_LAUNDER" },
+    { tool: "entity_link", finding: "CDC replaced by NIAID — entity substitution", primitive: "ENTITY_SUBSTITUTE" },
+    { tool: "quote_search", finding: "Fauci quote not found in any verified source", primitive: "QUOTE_FABRICATE" },
+    { tool: "network_cluster", finding: "47 coordinated bot accounts amplifying claim", primitive: "NETWORK_AMPLIFY" },
+    { tool: "cross_reference", finding: "PolitiFact PANTS ON FIRE, FactCheck.org FALSE", primitive: null },
+    { tool: "temporal_audit", finding: "Patent application 4yr before claim date", primitive: "TEMPORAL_SHIFT" },
   ],
   gnnNodeImportance: {
-    "marketpulse.net":   0.94,
-    "niaid.nih.gov":     0.87,
-    "fauci_quote_fake":  0.91,
-    "bot_cluster_1":     0.88,
-    "root_claim":        0.72,
-    "politifact":        0.31,
+    "marketpulse.net": 0.94,
+    "niaid.nih.gov": 0.87,
+    "fauci_quote_fake": 0.91,
+    "bot_cluster_1": 0.88,
+    "root_claim": 0.72,
+    "politifact": 0.31,
   },
   stix2Preview: `{
   "type": "bundle",
@@ -174,19 +190,19 @@ const PLANDEMIC_FALLBACK: EpisodeData = {
 
 // ─── Action name → human label mapping ───────────────────────────────────────
 const ACTION_LABELS: Record<string, string> = {
-  query_source:               "Queried primary source (Wikipedia + FactCheck)",
-  trace_origin:               "Traced origin via Wayback + Wikidata",
-  cross_reference:            "Cross-referenced multiple Wikipedia articles",
-  request_context:            "Requested context from authoritative sources",
-  entity_link:                "Linked named entities → Wikidata",
-  temporal_audit:             "Verified timestamps via Wayback CDX",
-  network_cluster:            "Scanned bot-amplification graph",
-  flag_manipulation:          "Manipulation signal flagged ⚑",
-  submit_verdict_real:        "Verdict submitted: REAL ✓",
-  submit_verdict_misinfo:     "Verdict submitted: MISINFORMATION ✗",
-  submit_verdict_satire:      "Verdict submitted: SATIRE ~",
+  query_source: "Queried primary source (Wikipedia + FactCheck)",
+  trace_origin: "Traced origin via Wayback + Wikidata",
+  cross_reference: "Cross-referenced multiple Wikipedia articles",
+  request_context: "Requested context from authoritative sources",
+  entity_link: "Linked named entities → Wikidata",
+  temporal_audit: "Verified timestamps via Wayback CDX",
+  network_cluster: "Scanned bot-amplification graph",
+  flag_manipulation: "Manipulation signal flagged ⚑",
+  submit_verdict_real: "Verdict submitted: REAL ✓",
+  submit_verdict_misinfo: "Verdict submitted: MISINFORMATION ✗",
+  submit_verdict_satire: "Verdict submitted: SATIRE ~",
   submit_verdict_out_of_context: "Verdict submitted: OUT OF CONTEXT",
-  submit_verdict_fabricated:  "Verdict submitted: FABRICATED ✗",
+  submit_verdict_fabricated: "Verdict submitted: FABRICATED ✗",
 };
 
 let _logCounter = 0;
@@ -251,6 +267,9 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   expertDecision: null,
   predictedChain: [],
   gnnNodeImportance: {},
+
+  isDiving: false,
+  divePhase: "idle",
 
   // ── init: check health + load tasks & actions ──────────────────────────────
   init: async () => {
@@ -318,7 +337,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       set((s) => ({
         logs: [...s.logs, log],
         observation: obs,
-        totalReward: stepRes.reward + s.totalReward,
+        totalReward: Math.min(0.999, Math.max(0.001, stepRes.reward + s.totalReward)),
         done: stepRes.done,
         status: stepRes.done ? "OPTIMAL" : "ACTIVE",
       }));
@@ -410,22 +429,22 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     });
 
     const demoSequence = [
-      { action: "query_source",          agent: "Blue Team",   detail: "Queried Wikipedia + FactCheck API for voting fraud claims",             obs: { evidence_coverage: 0.28, source_diversity: 0.37, steps_used: 1, budget_remaining: 0.85 } },
-      { action: "cross_reference",       agent: "Blue Team",   detail: "Matched 6 similar cases from the FORGE claim database",                   obs: { evidence_coverage: 0.47, source_diversity: 0.55, steps_used: 2, budget_remaining: 0.71 } },
-      { action: "network_cluster",       agent: "Red Team",    detail: "Detected bot-amplification graph — 340 coordinated accounts",             obs: { evidence_coverage: 0.59, source_diversity: 0.62, steps_used: 3, budget_remaining: 0.58 } },
-      { action: "temporal_audit",        agent: "Blue Team",   detail: "Verified publication timestamps via Wayback CDX — 3 anomalies found",    obs: { evidence_coverage: 0.73, source_diversity: 0.71, steps_used: 4, budget_remaining: 0.44 } },
-      { action: "entity_link",           agent: "Blue Team",   detail: "Linked 4 named entities to Wikidata — 2 flagged as suspicious",           obs: { evidence_coverage: 0.85, source_diversity: 0.88, steps_used: 5, budget_remaining: 0.31 } },
-      { action: "flag_manipulation",     agent: "Red Team",    detail: "Manipulation signal confirmed — coordinated inauthentic behaviour",        obs: { evidence_coverage: 0.93, source_diversity: 0.91, steps_used: 6, budget_remaining: 0.18 } },
-      { action: "submit_verdict_misinfo",agent: "Orchestrator",detail: "Consensus reached: MISINFORMATION — confidence 0.97",                      obs: { evidence_coverage: 0.99, source_diversity: 0.96, steps_used: 7, budget_remaining: 0.05 } },
+      { action: "query_source", agent: "Blue Team", detail: "Queried Wikipedia + FactCheck API for voting fraud claims", obs: { evidence_coverage: 0.28, source_diversity: 0.37, steps_used: 1, budget_remaining: 0.85 } },
+      { action: "cross_reference", agent: "Blue Team", detail: "Matched 6 similar cases from the FORGE claim database", obs: { evidence_coverage: 0.47, source_diversity: 0.55, steps_used: 2, budget_remaining: 0.71 } },
+      { action: "network_cluster", agent: "Red Team", detail: "Detected bot-amplification graph — 340 coordinated accounts", obs: { evidence_coverage: 0.59, source_diversity: 0.62, steps_used: 3, budget_remaining: 0.58 } },
+      { action: "temporal_audit", agent: "Blue Team", detail: "Verified publication timestamps via Wayback CDX — 3 anomalies found", obs: { evidence_coverage: 0.73, source_diversity: 0.71, steps_used: 4, budget_remaining: 0.44 } },
+      { action: "entity_link", agent: "Blue Team", detail: "Linked 4 named entities to Wikidata — 2 flagged as suspicious", obs: { evidence_coverage: 0.85, source_diversity: 0.88, steps_used: 5, budget_remaining: 0.31 } },
+      { action: "flag_manipulation", agent: "Red Team", detail: "Manipulation signal confirmed — coordinated inauthentic behaviour", obs: { evidence_coverage: 0.93, source_diversity: 0.91, steps_used: 6, budget_remaining: 0.18 } },
+      { action: "submit_verdict_misinfo", agent: "Orchestrator", detail: "Consensus reached: MISINFORMATION — confidence 0.97", obs: { evidence_coverage: 0.99, source_diversity: 0.96, steps_used: 7, budget_remaining: 0.05 } },
     ];
 
     let step = 0;
-    if ((window as any)._demoInterval) clearInterval((window as any)._demoInterval);
+    if (window._demoInterval) clearInterval(window._demoInterval as number);
 
     const interval = setInterval(() => {
       if (step >= demoSequence.length) {
         clearInterval(interval);
-        (window as any)._demoInterval = null;
+        window._demoInterval = null;
         set((state) => ({
           status: "OPTIMAL",
           done: true,
@@ -460,7 +479,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       const newLog: LogEntry = {
         id: ++_logCounter,
         action,
-        agent: agent as any,
+        agent: agent as "Blue Team" | "Red Team" | "Orchestrator",
         text: demoSequence[step].detail,
         ts: `00:0${step + 1}`,
         reward: Math.min(0.99, Math.max(0.01, parseFloat((0.05 + step * 0.024).toFixed(3)))),
@@ -469,7 +488,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       set((state) => ({
         logs: [...state.logs, newLog],
         observation: { ...state.observation!, ...obs },
-        totalReward: state.totalReward + (newLog.reward || 0),
+        totalReward: Math.min(0.999, Math.max(0.001, state.totalReward + (newLog.reward || 0))),
       }));
 
       step++;
@@ -487,13 +506,13 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     set({ liveClaimLoading: true, liveClaimError: null });
 
     try {
-      const response = await fetch("/fabricate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ seed_claim: liveClaim, k_max: 4 }),
-          signal: AbortSignal.timeout(15000),
-        }
-      );
+      const FORGE_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:7860";
+      const response = await fetch(`${FORGE_BASE}/fabricate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed_claim: liveClaim, k_max: 4 }),
+        signal: AbortSignal.timeout(15000),
+      });
 
       if (response.status === 429) {
         console.warn("API rate limited — switching to Plandemic fallback");
@@ -544,20 +563,20 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       // Simulate Blue Team Investigation
       const trueChainStr = trueChain.join(", ");
       const investigateSequence = [
-        { action: "query_source",          agent: "Blue Team",   detail: "Queried sources for claim verification",             obs: { evidence_coverage: 0.25, source_diversity: 0.35, steps_used: 1, budget_remaining: 0.85 } },
-        { action: "cross_reference",       agent: "Blue Team",   detail: "Cross-referencing entities in claim graph",          obs: { evidence_coverage: 0.45, source_diversity: 0.50, steps_used: 2, budget_remaining: 0.70 } },
-        { action: "gnn_explain",           agent: "Blue Team",   detail: `GNN detected structural patterns matching: ${trueChainStr}`, obs: { evidence_coverage: 0.75, source_diversity: 0.80, steps_used: 3, budget_remaining: 0.50 } },
-        { action: "flag_manipulation",     agent: "Red Team",    detail: "Manipulation confirmed by Red Team adversarial fingerprint", obs: { evidence_coverage: 0.90, source_diversity: 0.85, steps_used: 4, budget_remaining: 0.30 } },
-        { action: "submit_verdict",        agent: "Orchestrator",detail: "Consensus reached: MISINFORMATION",                  obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
+        { action: "query_source", agent: "Blue Team", detail: "Queried sources for claim verification", obs: { evidence_coverage: 0.25, source_diversity: 0.35, steps_used: 1, budget_remaining: 0.85 } },
+        { action: "cross_reference", agent: "Blue Team", detail: "Cross-referencing entities in claim graph", obs: { evidence_coverage: 0.45, source_diversity: 0.50, steps_used: 2, budget_remaining: 0.70 } },
+        { action: "gnn_explain", agent: "Blue Team", detail: `GNN detected structural patterns matching: ${trueChainStr}`, obs: { evidence_coverage: 0.75, source_diversity: 0.80, steps_used: 3, budget_remaining: 0.50 } },
+        { action: "flag_manipulation", agent: "Red Team", detail: "Manipulation confirmed by Red Team adversarial fingerprint", obs: { evidence_coverage: 0.90, source_diversity: 0.85, steps_used: 4, budget_remaining: 0.30 } },
+        { action: "submit_verdict", agent: "Orchestrator", detail: "Consensus reached: MISINFORMATION", obs: { evidence_coverage: 0.99, source_diversity: 0.95, steps_used: 5, budget_remaining: 0.10 } },
       ];
 
       let step = 0;
-      if ((window as any)._demoInterval) clearInterval((window as any)._demoInterval);
+      if (window._demoInterval) clearInterval(window._demoInterval as number);
 
       const interval = setInterval(() => {
         if (step >= investigateSequence.length) {
           clearInterval(interval);
-          (window as any)._demoInterval = null;
+          window._demoInterval = null;
           set((state) => ({
             status: "OPTIMAL",
             done: true,
@@ -591,7 +610,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         const newLog: LogEntry = {
           id: ++_logCounter,
           action,
-          agent: agent as any,
+          agent: agent as "Blue Team" | "Red Team" | "Orchestrator",
           text: investigateSequence[step].detail,
           ts: `00:0${step + 1}`,
           reward: Math.min(0.99, Math.max(0.01, parseFloat((0.10 + step * 0.15).toFixed(3)))),
@@ -600,20 +619,20 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         set((state) => ({
           logs: [...state.logs, newLog],
           observation: { ...state.observation!, ...obs },
-          totalReward: state.totalReward + (newLog.reward || 0),
+          totalReward: Math.min(0.999, Math.max(0.001, state.totalReward + (newLog.reward || 0))),
         }));
 
         step++;
       }, 800);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       const newFailureCount = apiFailureCount + 1;
       if (newFailureCount >= 2) {
         activateFallback();
       }
       set({
         liveClaimLoading: false,
-        liveClaimError: err.message,
+        liveClaimError: err instanceof Error ? err.message : "Unknown error",
         apiFailureCount: newFailureCount,
       });
     }
@@ -656,8 +675,8 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
         agent: (["trace_origin", "network_cluster", "flag_manipulation"].includes(entry.tool)
           ? "Red Team"
           : entry.tool.startsWith("entity") || entry.tool.startsWith("quote")
-          ? "Blue Team"
-          : "Blue Team") as "Blue Team" | "Red Team" | "Orchestrator",
+            ? "Blue Team"
+            : "Blue Team") as "Blue Team" | "Red Team" | "Orchestrator",
       })),
       totalReward: 0.94,
     });
@@ -666,5 +685,50 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   // ── resetFallback ───────────────────────────────────────────────────────────
   resetFallback: () => {
     set({ isFallbackMode: false, fallbackEpisode: null, apiFailureCount: 0 });
+  },
+
+  // ── Dive Transition ─────────────────────────────────────────────────────────
+  setDivePhase: (phase) => set({ divePhase: phase }),
+  startDive: () => {
+    if (get().isDiving) return;
+    set({ isDiving: true, divePhase: "diving" });
+
+    // Play optional sound
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(100, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.8);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.1);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.8);
+      }
+    } catch {
+      // Audio context might fail to initialize
+    }
+
+    // Scroll to dashboard — use RAF to ensure DOM is ready, do NOT lock overflow
+    requestAnimationFrame(() => {
+      const dash = document.getElementById("dashboard-section");
+      if (dash) {
+        dash.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+
+    // Transition to dashboard phase after hero fade completes
+    setTimeout(() => {
+      set({ divePhase: "dashboard" });
+    }, 1200);
+  },
+  resetDive: () => {
+    set({ isDiving: false, divePhase: "idle" });
   },
 }));

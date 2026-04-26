@@ -1,5 +1,5 @@
 """
-Budget Penalty shaping for FORGE-MA.
+Budget Penalty shaping for FORGE-RL.
 SPEC (Master Prompt §Layer5):
   - step_cost: small negative reward per step taken (-0.01 default)
   - over_budget_penalty: large penalty if final step count exceeds budget limit (-0.50)

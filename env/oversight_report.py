@@ -1,5 +1,5 @@
 """
-OversightReport — Dual-output report generator for FORGE-MA episode results.
+OversightReport — Dual-output report generator for FORGE-RL episode results.
 SPEC (Master Prompt §Layer6 + PRD v8.1):
   - generate_oversight_report(): Markdown string for Gradio/Jupyter display
   - generate_stix2_bundle(): STIX2 Bundle JSON (required for Fleet AI prize)
@@ -91,7 +91,7 @@ def generate_oversight_report(episode: EpisodeOutput,
     correct_mark = "✅ Chain Match" if episode.is_correct else "❌ Chain Mismatch"
 
     lines = [
-        "# 🔬 FORGE-MA Oversight Report",
+        "# 🔬 FORGE-RL Oversight Report",
         f"**Episode:** `{episode.episode_id}` | "
         f"**Generation:** {generation} | "
         f"**Timestamp:** {episode.timestamp}",
@@ -176,7 +176,7 @@ def generate_oversight_report(episode: EpisodeOutput,
 
 
 def generate_stix2_bundle(episode: EpisodeOutput,
-                           campaign_name: str = "FORGE-MA Episode",
+                           campaign_name: str = "FORGE-RL Episode",
                            claim_text: Optional[str] = None) -> str:
     """
     Generate a STIX2 Bundle for one episode.
@@ -225,7 +225,7 @@ def _generate_stix2_with_library(episode, campaign_name, claim_text, now_iso, ch
         attack_patterns.append(ap)
 
     threat_actor = stix2.ThreatActor(
-        name=f"FORGE-MA Red Agent (Episode {episode.episode_id})",
+        name=f"FORGE-RL Red Agent (Episode {episode.episode_id})",
         description="Adversarial agent producing synthetic misinformation chains.",
         custom_properties={
             "x_forge_verdict": episode.verdict,
@@ -305,7 +305,7 @@ def _generate_stix2_manual(episode, campaign_name, claim_text, now_iso, chain, e
         "id": ta_id,
         "created": now_iso,
         "modified": now_iso,
-        "name": f"FORGE-MA Red Agent (Episode {ep_id})",
+        "name": f"FORGE-RL Red Agent (Episode {ep_id})",
         "description": "Adversarial agent producing synthetic misinformation chains.",
         "threat_actor_types": ["activist"],
         "x_forge_verdict": episode.verdict,

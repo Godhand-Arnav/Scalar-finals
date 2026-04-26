@@ -4,6 +4,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MotionValue } from "framer-motion";
+import { useForgeStore } from "@/store/forgeStore";
 
 /*  ═══════════════════════════════════════════════════════════════
     BackgroundMesh — Neural Nebula
@@ -73,11 +74,30 @@ export function BackgroundMesh({ scrollY }: BackgroundMeshProps) {
   useFrame((state, delta) => {
     if (!pointsRef.current) return;
 
+    const divePhase = useForgeStore.getState().divePhase;
+
     // Scroll speed sync
     const velocity = scrollY.getVelocity();
-    const speedTarget = Math.abs(velocity) > 50 ? 4 : 1;
+    let speedTarget = Math.abs(velocity) > 50 ? 4 : 1;
+    
+    // Dive transitions
+    if (divePhase === "diving") {
+      speedTarget = 30; // Warp speed
+    } else if (divePhase === "landing") {
+      speedTarget = 8; // Slowing down
+    } else if (divePhase === "dashboard") {
+      speedTarget = 1; // Calm motion
+    }
+
     actualSpeed.current = THREE.MathUtils.lerp(actualSpeed.current, speedTarget, 0.05);
     timeRef.current += delta * actualSpeed.current * 0.4;
+    
+    // Camera movement
+    let targetZ = 8;
+    if (divePhase !== "idle") {
+      targetZ = 2; // Inward camera movement
+    }
+    state.camera.position.z += (targetZ - state.camera.position.z) * 0.05;
     
     const t = timeRef.current;
     const pa = pointsRef.current.geometry.attributes.position.array as Float32Array;

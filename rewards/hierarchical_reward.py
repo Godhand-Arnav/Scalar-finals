@@ -1,5 +1,5 @@
 """
-Hierarchical Reward Shaper for FORGE-MA v9.0.
+Hierarchical Reward Shaper for FORGE-RL v9.0.
 SPEC (Master Prompt §Layer5 + PRD v8.1 Section 5):
 
   R_total = w1*TED_best + w2*TPR_F1 + w3*plausibility_delta

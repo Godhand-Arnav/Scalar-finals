@@ -7,7 +7,7 @@ import { AnimatedBackground } from "@/components/ui/AnimatedBackground";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FORGE | Misinformation Forensics",
+  title: "FORGE-RL | Misinformation Forensics",
   description: "Next-gen AI agent forensics distribution layer.",
 };
 

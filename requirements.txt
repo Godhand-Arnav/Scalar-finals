@@ -29,3 +29,15 @@ pytest>=8.0.0
 pytest-asyncio>=0.23.0
 openenv-core>=0.2.0
 uv>=0.11.0
+
+# ── Knowledge Graph ───────────────────────────────────────────────────────────
+graphifyy>=0.3.0                # codebase knowledge graph builder
+
+# ── Deepfake Detection ────────────────────────────────────────────────────────
+torchvision>=0.17.0             # CNN backbones + image transforms
+Pillow>=10.0.0                  # image I/O
+opencv-python-headless>=4.9.0   # frame ops (no GUI deps for server)
+facenet-pytorch>=2.5.3          # MTCNN face detector
+timm>=0.9.12                    # EfficientNet-B4 (tf_efficientnet_b4_ns)
+pillow-heif>=0.16.0             # iPhone HEIC/HEIF decode
+python-multipart>=0.0.9         # FastAPI multipart/form-data uploads

@@ -1,5 +1,5 @@
 """
-FORGE-MA Gymnasium-compatible Environment.
+FORGE-RL Gymnasium-compatible Environment.
 SPEC (Master Prompt §Layer7):
   - step() returns (obs, reward, terminated, truncated, info)
   - Episode budget: 10 steps default, configurable
@@ -52,7 +52,7 @@ class ForgeEnvConfig:
 
 class ForgeEnv:
     """
-    Gymnasium-style adversarial RL environment for FORGE-MA.
+    Gymnasium-style adversarial RL environment for FORGE-RL.
 
     Agents:
       - Red  : RedAgent (perturbs claim graph each step)

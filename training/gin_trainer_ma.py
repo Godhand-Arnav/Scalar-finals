@@ -1,5 +1,5 @@
 """
-GIN Trainer for FORGE-MA Blue Team.
+GIN Trainer for FORGE-RL Blue Team.
 SPEC (PRD v8.1 §Blue Team Training):
 
   The Blue Team (GINPredictor) learns via supervised signal:
