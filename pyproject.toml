@@ -1,54 +1,29 @@
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
-
 [project]
-name = "forge"
-version = "2.0.0"
-description = "FORGE v2 — Misinformation Forensics RL + FORGE-MA Adversarial Multi-Agent Extension"
-readme = "README.md"
-license = {text = "MIT"}
-authors = [{name = "FORGE Team"}]
+name = "forge-ma"
+version = "1.0.0"
+description = "Adversarial misinformation forensics RL environment — OpenEnv compatible"
 requires-python = ">=3.10"
-keywords = ["reinforcement-learning", "misinformation", "fact-checking",
-            "openenv", "graph-neural-network", "trust-and-safety", "adversarial-rl"]
-classifiers = [
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Intended Audience :: Science/Research",
-]
 dependencies = [
-    "gymnasium>=0.29.1",
+    "openenv-core[core]>=0.2.1",
+    "torch>=2.0.0",
+    "torch-geometric>=2.3.0",
+    "sentence-transformers>=2.2.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "groq>=0.4.0",
     "numpy>=1.24.0",
-    "torch>=2.1.0",
-    "sentence-transformers>=2.6.0",
-    "fastapi>=0.111.0",
-    "uvicorn[standard]>=0.29.0",
-    "pydantic>=2.0.0",
-    "httpx>=0.27.0",
-    "python-dotenv>=1.0.0",
-    "duckduckgo-search>=5.0.0",
-    "openai>=1.14.0",
-    "tenacity>=8.2.0",
-    "openenv-core>=0.2.0",
-    "torch-geometric>=2.5.0",
-    "trl>=0.7.0",
-    "stix2>=3.0.0",
 ]
 
 [project.scripts]
-server = "uvicorn:main"
+server = "forge_ma.server.app:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = [
-    "env*", "server*", "tools*", "agents*", "training*",
-    "red_team*", "blue_team*", "rewards*", "evaluation*",
-]
+include = ["*"]
 
-[tool.setuptools]
-py-modules = []
+[tool.setuptools.package-dir]
+"" = "."
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["tests"]
-addopts = "-v --tb=short"
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
